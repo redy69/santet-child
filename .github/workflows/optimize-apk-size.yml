@@ -83,3 +83,31 @@ jobs:
         with:
           name: santethp-ortu-r8-validation
           path: app/build/outputs/apk/ortu/debug/*.apk
+      - name: Create temporary validation signing key
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v -keystore "$RUNNER_TEMP/santethp-validation.jks" -storepass "ValidationOnly-720" -keypass "ValidationOnly-720" -alias santethp-validation -keyalg RSA -keysize 2048 -validity 2 -dname "CN=SantetHP Validation, OU=CI, O=SantetHP, L=Semarang, ST=Central Java, C=ID"
+      - name: Build minified release APKs with temporary validation signature
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/santethp-validation.jks
+          ANDROID_KEYSTORE_PASSWORD: ValidationOnly-720
+          ANDROID_KEY_ALIAS: santethp-validation
+          ANDROID_KEY_PASSWORD: ValidationOnly-720
+          METERED_TURN_API_KEY: ${{ secrets.METERED_TURN_API_KEY }}
+        run: |
+          set -euo pipefail
+          gradle :app:assembleAnakRelease :app:assembleOrtuRelease -PversionCode=720
+      - name: Report release APK sizes
+        run: |
+          set -euo pipefail
+          find app/build/outputs/apk/anak/release app/build/outputs/apk/ortu/release -type f -name "*.apk" -print -exec du -b {} +
+      - name: Upload Anak release validation APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: santethp-anak-release-validation
+          path: app/build/outputs/apk/anak/release/*.apk
+      - name: Upload Ortu release validation APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: santethp-ortu-release-validation
+          path: app/build/outputs/apk/ortu/release/*.apk
