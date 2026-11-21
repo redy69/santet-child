@@ -69,13 +69,19 @@ jobs:
       - name: Install Android SDK components
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Build Anak debug APK (Firebase configuration unchanged)
+      - name: Build Anak and Ortu debug APKs
         run: |
           set -euo pipefail
-          gradle :app:assembleAnakDebug -PversionCode=719
+          gradle :app:assembleAnakDebug :app:assembleOrtuDebug -PversionCode=719
 
       - name: Upload Anak debug APK for validation
         uses: actions/upload-artifact@v4
         with:
           name: santethp-anak-debug-validation
           path: app/build/outputs/apk/anak/debug/app-anak-debug.apk
+
+      - name: Upload Ortu debug APK for validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: santethp-ortu-debug-validation
+          path: app/build/outputs/apk/ortu/debug/app-ortu-debug.apk
