@@ -1,4 +1,8 @@
 name: Validate background lifecycle patch
+
+concurrency:
+  group: background-lifecycle-validation-${{ github.ref }}
+  cancel-in-progress: true
 # Keep the Anak and Ortu debug compile check active for each lifecycle fix.
 
 on:
