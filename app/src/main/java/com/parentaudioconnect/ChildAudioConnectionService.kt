@@ -354,7 +354,7 @@ class ChildAudioConnectionService : Service() {
                                         if (childTalkMicActive) {
                                             pendingTalkMicEnabled = false
                                             serviceScope.launch {
-                                                applyTalkMicrophoneState(false)
+                                                applyPendingTalkMicrophoneState()
                                                 updateNotification("Orang tua terputus • mikrofon anak dimatikan")
                                             }
                                         }
@@ -428,7 +428,7 @@ class ChildAudioConnectionService : Service() {
                         else "Terhubung • audio live dan MP3 aktif • mikrofon mati"
                     )
                     pendingTalkMicEnabled?.let { desiredMicState ->
-                        serviceScope.launch { applyTalkMicrophoneState(desiredMicState) }
+                        serviceScope.launch { applyPendingTalkMicrophoneState() }
                     }
                     return
                 } catch (error: CancellationException) {
@@ -518,7 +518,7 @@ class ChildAudioConnectionService : Service() {
             preferredServerId = serverId
             reconnectForConversationServer(serverId)
         } else {
-            serviceScope.launch { applyTalkMicrophoneState(enabled) }
+            serviceScope.launch { applyPendingTalkMicrophoneState() }
         }
         return true
     }
@@ -544,16 +544,16 @@ class ChildAudioConnectionService : Service() {
                 connecting = true
                 connectWithRetry()
             } else if (room != null && isActive) {
-                applyTalkMicrophoneState(pendingTalkMicEnabled ?: false)
+                applyPendingTalkMicrophoneState()
             }
         }
     }
 
-    private suspend fun applyTalkMicrophoneState(enabled: Boolean) {
+    private suspend fun applyPendingTalkMicrophoneState() {
         // Serialize LiveKit microphone transitions. If START and STOP arrive while
         // one transition is in flight, always apply the newest requested state last.
         talkMicMutex.withLock {
-            var desiredState = pendingTalkMicEnabled ?: enabled
+            var desiredState = pendingTalkMicEnabled ?: return@withLock
             while (true) {
                 val activeRoom = room
                 if (activeRoom == null) {
