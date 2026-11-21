@@ -69,7 +69,7 @@ jobs:
       - name: Install Android SDK components
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Compile Ortu and build Anak debug APK
+      - name: Build Anak debug APK (Firebase configuration unchanged)
         run: |
           set -euo pipefail
           gradle :app:assembleAnakDebug -PversionCode=719
