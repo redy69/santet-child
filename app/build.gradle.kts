@@ -24,6 +24,16 @@ val meteredTurnApiKey = System.getenv("METERED_TURN_API_KEY")
 android {
     buildFeatures { buildConfig = true }
     namespace = "com.santethp"
+
+    // Build an ARM64 test APK plus a universal fallback for size comparison.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a")
+            isUniversalApk = true
+        }
+    }
     compileSdk = 35
     flavorDimensions += "role"
     productFlavors {
