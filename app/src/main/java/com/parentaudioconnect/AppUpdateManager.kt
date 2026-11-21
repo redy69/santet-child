@@ -83,10 +83,15 @@ object AppUpdateManager {
                 val releases = fetchJsonArray(RELEASES_API, github = true)
                 val release = (0 until releases.length())
                     .mapNotNull { releases.optJSONObject(it) }
-                    .filter {
-                        it.optString("tag_name").startsWith("split-build-") &&
-                            !it.optBoolean("draft", false) &&
-                            !it.optBoolean("prerelease", false)
+                    .filter { candidate ->
+                        val assets = candidate.optJSONArray("assets")
+                        candidate.optString("tag_name").startsWith("split-build-") &&
+                            !candidate.optBoolean("draft", false) &&
+                            !candidate.optBoolean("prerelease", false) &&
+                            assets != null &&
+                            (0 until assets.length()).any { index ->
+                                assets.optJSONObject(index)?.optString("name") == APK_NAME
+                            }
                     }
                     .maxByOrNull {
                         it.optString("tag_name").substringAfterLast("-", "").toIntOrNull() ?: -1
