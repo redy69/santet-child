@@ -55,6 +55,17 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Set up Node.js for Firestore rules tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run Firestore security rules tests
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npx firebase emulators:exec --only firestore --project demo-santethp "npm run test:rules"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
