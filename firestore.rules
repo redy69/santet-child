@@ -160,7 +160,8 @@ service cloud.firestore {
           'parentMediaReceiveEnabled',
           'parentMediaReceiveUpdatedAt',
           'notificationListenerConnected',
-          'notificationListenerUpdatedAt'
+          'notificationListenerUpdatedAt',
+          'notificationMonitoringConsent'
         ])
         && (!changed.hasAny(['deviceBatteryPercent'])
           || (request.resource.data.deviceBatteryPercent is int
@@ -277,7 +278,9 @@ service cloud.firestore {
         && (!changed.hasAny(['notificationListenerConnected'])
           || request.resource.data.notificationListenerConnected is bool)
         && (!changed.hasAny(['notificationListenerUpdatedAt'])
-          || request.resource.data.notificationListenerUpdatedAt is timestamp);
+          || request.resource.data.notificationListenerUpdatedAt is timestamp)
+        && (!changed.hasAny(['notificationMonitoringConsent'])
+          || request.resource.data.notificationMonitoringConsent is bool);
     }
 
     match /pairings/{code} {
@@ -386,6 +389,8 @@ service cloud.firestore {
       match /notifications/{notificationId} {
         allow create: if signedIn()
           && get(/databases/$(database)/documents/pairings/$(code)).data.childUid == request.auth.uid
+          && get(/databases/$(database)/documents/pairings/$(code)).data.notificationMonitoringConsent == true
+          && get(/databases/$(database)/documents/pairings/$(code)).data.notificationListenerConnected == true
           && request.resource.data.keys().hasOnly([
             'packageName', 'appName', 'title', 'text', 'postedAt'
           ])
@@ -394,6 +399,14 @@ service cloud.firestore {
           ])
           && request.resource.data.packageName is string
           && request.resource.data.packageName.size() <= 200
+          && (
+            !get(/databases/$(database)/documents/pairings/$(code)).data.keys().hasAny(['notificationAllowedPackages'])
+            || (
+              get(/databases/$(database)/documents/pairings/$(code)).data.notificationAllowedPackages is list
+              && get(/databases/$(database)/documents/pairings/$(code)).data.notificationAllowedPackages.size() <= 300
+              && request.resource.data.packageName in get(/databases/$(database)/documents/pairings/$(code)).data.notificationAllowedPackages
+            )
+          )
           && request.resource.data.appName is string
           && request.resource.data.appName.size() <= 120
           && request.resource.data.title is string
