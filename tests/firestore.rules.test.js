@@ -104,6 +104,116 @@ test("parent can save notification app filter and child cannot change it", async
   }));
 });
 
+
+test("child can create a notification only with server consent and active listener status", async () => {
+  await seedPairing({
+    notificationMonitoringConsent: true,
+    notificationListenerConnected: true
+  });
+  const childDb = testEnv.authenticatedContext("child-user").firestore();
+  await assertSucceeds(setDoc(doc(childDb, "pairings", PAIR_CODE, "notifications", "allowed-1"), {
+    packageName: "com.whatsapp",
+    appName: "WhatsApp",
+    title: "Pesan baru",
+    text: "Halo",
+    postedAt: Timestamp.now()
+  }));
+});
+
+test("notification writes are denied when child consent is absent or revoked", async () => {
+  await seedPairing({
+    notificationMonitoringConsent: false,
+    notificationListenerConnected: true
+  });
+  const childDb = testEnv.authenticatedContext("child-user").firestore();
+  await assertFails(setDoc(doc(childDb, "pairings", PAIR_CODE, "notifications", "no-consent"), {
+    packageName: "com.whatsapp", appName: "WhatsApp", title: "Pesan", text: "Isi", postedAt: Timestamp.now()
+  }));
+});
+
+test("notification writes are denied when Android listener is disconnected", async () => {
+  await seedPairing({
+    notificationMonitoringConsent: true,
+    notificationListenerConnected: false
+  });
+  const childDb = testEnv.authenticatedContext("child-user").firestore();
+  await assertFails(setDoc(doc(childDb, "pairings", PAIR_CODE, "notifications", "offline"), {
+    packageName: "com.whatsapp", appName: "WhatsApp", title: "Pesan", text: "Isi", postedAt: Timestamp.now()
+  }));
+});
+
+test("notification app filter permits selected packages and denies unselected packages", async () => {
+  await seedPairing({
+    notificationMonitoringConsent: true,
+    notificationListenerConnected: true,
+    notificationAllowedPackages: ["com.whatsapp"]
+  });
+  const childDb = testEnv.authenticatedContext("child-user").firestore();
+  const allowed = {
+    packageName: "com.whatsapp", appName: "WhatsApp", title: "Pesan", text: "Isi", postedAt: Timestamp.now()
+  };
+  await assertSucceeds(setDoc(doc(childDb, "pairings", PAIR_CODE, "notifications", "selected"), allowed));
+  await assertFails(setDoc(doc(childDb, "pairings", PAIR_CODE, "notifications", "not-selected"), {
+    ...allowed, packageName: "com.android.chrome"
+  }));
+});
+
+test("an explicitly empty notification app filter denies every app", async () => {
+  await seedPairing({
+    notificationMonitoringConsent: true,
+    notificationListenerConnected: true,
+    notificationAllowedPackages: []
+  });
+  const childDb = testEnv.authenticatedContext("child-user").firestore();
+  await assertFails(setDoc(doc(childDb, "pairings", PAIR_CODE, "notifications", "none-selected"), {
+    packageName: "com.whatsapp", appName: "WhatsApp", title: "Pesan", text: "Isi", postedAt: Timestamp.now()
+  }));
+});
+
+test("missing notification app filter preserves the default all-apps behavior", async () => {
+  await seedPairing({
+    notificationMonitoringConsent: true,
+    notificationListenerConnected: true
+  });
+  const childDb = testEnv.authenticatedContext("child-user").firestore();
+  await assertSucceeds(setDoc(doc(childDb, "pairings", PAIR_CODE, "notifications", "default-all"), {
+    packageName: "com.android.chrome", appName: "Chrome", title: "Update", text: "Ready", postedAt: Timestamp.now()
+  }));
+});
+
+test("only the paired parent can read notifications; child and outsiders cannot", async () => {
+  await seedPairing({
+    notificationMonitoringConsent: true,
+    notificationListenerConnected: true
+  });
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc(`pairings/${PAIR_CODE}/notifications/history-1`).set({
+      packageName: "com.whatsapp", appName: "WhatsApp", title: "Pesan", text: "Isi", postedAt: Timestamp.now()
+    });
+  });
+  const parentDb = testEnv.authenticatedContext("parent-user").firestore();
+  const childDb = testEnv.authenticatedContext("child-user").firestore();
+  const outsiderDb = testEnv.authenticatedContext("outsider-user").firestore();
+  await assertSucceeds(getDoc(doc(parentDb, "pairings", PAIR_CODE, "notifications", "history-1")));
+  await assertFails(getDoc(doc(childDb, "pairings", PAIR_CODE, "notifications", "history-1")));
+  await assertFails(getDoc(doc(outsiderDb, "pairings", PAIR_CODE, "notifications", "history-1")));
+});
+
+test("child may revoke notification consent but parent cannot change it", async () => {
+  await seedPairing({ notificationMonitoringConsent: true });
+  const childDb = testEnv.authenticatedContext("child-user").firestore();
+  const parentDb = testEnv.authenticatedContext("parent-user").firestore();
+  await assertSucceeds(updateDoc(doc(childDb, "pairings", PAIR_CODE), {
+    notificationMonitoringConsent: false
+  }));
+  await assertFails(updateDoc(doc(parentDb, "pairings", PAIR_CODE), {
+    notificationMonitoringConsent: true
+  }));
+  await assertFails(updateDoc(doc(childDb, "pairings", PAIR_CODE), {
+    notificationMonitoringConsent: "yes"
+  }));
+});
+
 test("parent can configure Wi-Fi-only Drive backup per child", async () => {
   const db = testEnv.authenticatedContext("parent-user").firestore();
   await assertSucceeds(updateDoc(doc(db, "pairings", PAIR_CODE), {
