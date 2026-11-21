@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-feature android:name="android.hardware.camera.any" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
+
+    <application>
+        <service android:name=".ChildNotificationListenerService" tools:node="remove" />
+        <service android:name=".ChildAppBlockAccessibilityService" tools:node="remove" />
+        <service android:name=".ChildGalleryP2pService" tools:node="remove" />
+        <service android:name=".ChildLocationSharingService" tools:node="remove" />
+        <service android:name=".RemoteCameraService" tools:node="remove" />
+        <service android:name=".ChildAudioConnectionService" tools:node="remove" />
+        <service android:name=".AudioPlaybackService" tools:node="remove" />
+        <receiver android:name=".BootReceiver" tools:node="remove" />
+    </application>
+</manifest>
