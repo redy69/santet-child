@@ -528,18 +528,24 @@ class ChildAudioConnectionService : Service() {
         serverSwitchJob = serviceScope.launch {
             while (connecting && isActive) delay(250)
             if (!isActive) return@launch
-            val activeRoom = room
-            if (activeRoom != null && connectedServerId != serverId) {
-                try { activeRoom.localParticipant.setMicrophoneEnabled(false) } catch (_: Exception) { }
-                childTalkMicActive = false
-                roomEventsJob?.cancel()
-                roomEventsJob = null
-                mp3TransferManager = null
-                room = null
-                try { activeRoom.disconnect() } catch (_: Exception) { }
-                try { activeRoom.release() } catch (_: Exception) { }
-                connectedServerId = null
+
+            // Serialize the old-room microphone shutdown with any in-flight START/STOP.
+            // The latest pending command remains queued and is applied after the new room connects.
+            talkMicMutex.withLock {
+                val activeRoom = room
+                if (activeRoom != null && connectedServerId != serverId) {
+                    try { activeRoom.localParticipant.setMicrophoneEnabled(false) } catch (_: Exception) { }
+                    childTalkMicActive = false
+                    roomEventsJob?.cancel()
+                    roomEventsJob = null
+                    mp3TransferManager = null
+                    room = null
+                    try { activeRoom.disconnect() } catch (_: Exception) { }
+                    try { activeRoom.release() } catch (_: Exception) { }
+                    connectedServerId = null
+                }
             }
+
             if (room == null && !connecting && isActive) {
                 connecting = true
                 connectWithRetry()
