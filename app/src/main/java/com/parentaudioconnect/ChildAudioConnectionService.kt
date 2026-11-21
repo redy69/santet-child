@@ -585,11 +585,14 @@ class ChildAudioConnectionService : Service() {
                         }
                     }
 
+                    if (room !== activeRoom) return@withLock
+                    // Record a completed transition even if a newer command arrived
+                    // during the LiveKit call; the loop below immediately applies it.
+                    if (changed) childTalkMicActive = desiredState
                     if (pendingTalkMicEnabled != desiredState) {
                         desiredState = pendingTalkMicEnabled ?: return@withLock
                         continue
                     }
-                    if (room !== activeRoom) return@withLock
 
                     if (!changed) {
                         updateNotification(
