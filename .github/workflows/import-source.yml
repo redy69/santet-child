@@ -35,6 +35,7 @@ jobs:
           git switch -c migration/build-713-source
           mkdir -p "$RUNNER_TEMP/santethp-source"
           rsync -a --exclude='.git' source/ "$RUNNER_TEMP/santethp-source/"
+          rm -rf source
           rsync -a --delete --exclude=".git" "$RUNNER_TEMP/santethp-source/" ./
           git add -A
           git commit -m "Import complete ParentAudioConnect snapshot at Build 713"
