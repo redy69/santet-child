@@ -87,16 +87,17 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    // Camera capture and child location sharing are only packaged in the Anak flavor.
+    anakImplementation("io.livekit:livekit-android-camerax:2.30.0")
+    anakImplementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("io.github.webrtc-sdk:android:150.7871.04")
     implementation("io.livekit:livekit-android:2.30.0")
-    implementation("io.livekit:livekit-android-camerax:2.30.0")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
-    implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.google.android.gms:play-services-auth:21.5.1")
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
