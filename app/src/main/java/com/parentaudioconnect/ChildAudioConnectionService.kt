@@ -93,6 +93,16 @@ class ChildAudioConnectionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Android supplies a null intent when it recreates a START_STICKY service
+        // after process death. Both audio services from the old process are gone,
+        // so clear their last published activity flags before reconnecting receive-only.
+        if (intent == null) {
+            ChildAudioActivityReporter.clearAfterProcessRestart(applicationContext)
+            childTalkMicActive = false
+            pendingTalkMicEnabled = null
+            activeRemoteAudioTrackIds.clear()
+            stopLiveAudioHeartbeat()
+        }
         if (intent?.action == ACTION_DISCONNECT) {
             serviceScope.launch {
                 try { room?.localParticipant?.setMicrophoneEnabled(false) } catch (_: Exception) { }
