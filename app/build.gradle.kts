@@ -40,13 +40,13 @@ android {
         create("ortu") {
             dimension = "role"
             applicationId = "com.santethp.parent"
-            buildConfigField("String", "APP_ROLE", "\\"parent\\"")
+            buildConfigField("String", "APP_ROLE", "\"parent\"")
             resValue("string", "app_name", "SantetHP Ortu")
         }
         create("anak") {
             dimension = "role"
             applicationId = "com.santethp"
-            buildConfigField("String", "APP_ROLE", "\\"child\\"")
+            buildConfigField("String", "APP_ROLE", "\"child\"")
             resValue("string", "app_name", "SantetHP Anak")
         }
     }
