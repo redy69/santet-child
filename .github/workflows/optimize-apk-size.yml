@@ -73,16 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           find app/build/outputs/apk -type f -name "*.apk" -print -exec du -b {} +
-      - name: Upload Anak debug APK for validation only
-        uses: actions/upload-artifact@v4
-        with:
-          name: santethp-anak-r8-validation
-          path: app/build/outputs/apk/anak/debug/*.apk
-      - name: Upload Ortu debug APK for validation only
-        uses: actions/upload-artifact@v4
-        with:
-          name: santethp-ortu-r8-validation
-          path: app/build/outputs/apk/ortu/debug/*.apk
+      # Debug builds are validated and size-reported, not offered as downloads.
       - name: Create temporary validation signing key
         run: |
           set -euo pipefail
@@ -101,13 +92,73 @@ jobs:
         run: |
           set -euo pipefail
           find app/build/outputs/apk/anak/release app/build/outputs/apk/ortu/release -type f -name "*.apk" -print -exec du -b {} +
-      - name: Upload Anak release validation APKs
+      - name: Upload anak arm64-v8a release APK separately
         uses: actions/upload-artifact@v4
         with:
-          name: santethp-anak-release-validation
-          path: app/build/outputs/apk/anak/release/*.apk
-      - name: Upload Ortu release validation APKs
+          name: SantetHP-anak-arm64-v8a-release-validation
+          path: app/build/outputs/apk/anak/release/app-anak-arm64-v8a-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload anak armeabi-v7a release APK separately
         uses: actions/upload-artifact@v4
         with:
-          name: santethp-ortu-release-validation
-          path: app/build/outputs/apk/ortu/release/*.apk
+          name: SantetHP-anak-armeabi-v7a-release-validation
+          path: app/build/outputs/apk/anak/release/app-anak-armeabi-v7a-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload anak x86 release APK separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: SantetHP-anak-x86-release-validation
+          path: app/build/outputs/apk/anak/release/app-anak-x86-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload anak x86_64 release APK separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: SantetHP-anak-x86_64-release-validation
+          path: app/build/outputs/apk/anak/release/app-anak-x86_64-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload anak universal release APK separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: SantetHP-anak-universal-release-validation
+          path: app/build/outputs/apk/anak/release/app-anak-universal-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload ortu arm64-v8a release APK separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: SantetHP-ortu-arm64-v8a-release-validation
+          path: app/build/outputs/apk/ortu/release/app-ortu-arm64-v8a-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload ortu armeabi-v7a release APK separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: SantetHP-ortu-armeabi-v7a-release-validation
+          path: app/build/outputs/apk/ortu/release/app-ortu-armeabi-v7a-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload ortu x86 release APK separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: SantetHP-ortu-x86-release-validation
+          path: app/build/outputs/apk/ortu/release/app-ortu-x86-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload ortu x86_64 release APK separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: SantetHP-ortu-x86_64-release-validation
+          path: app/build/outputs/apk/ortu/release/app-ortu-x86_64-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload ortu universal release APK separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: SantetHP-ortu-universal-release-validation
+          path: app/build/outputs/apk/ortu/release/app-ortu-universal-release.apk
+          if-no-files-found: error
+          retention-days: 30
