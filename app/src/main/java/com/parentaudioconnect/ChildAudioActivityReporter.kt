@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.android.gms.tasks.Task
+import java.util.UUID
 
 /**
  * Publishes child-side live-audio activity to the paired document so the parent
@@ -13,6 +14,16 @@ import com.google.android.gms.tasks.Task
  */
 object ChildAudioActivityReporter {
     private const val TAG = "ChildAudioActivity"
+    private const val PROCESS_SESSION_KEY = "child_audio_process_session"
+    private val processSessionId = UUID.randomUUID().toString()
+
+    /** Returns true when this Android app process differs from the last one that hosted the service. */
+    fun beginProcessSession(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("parent_audio", Context.MODE_PRIVATE)
+        val previousSession = prefs.getString(PROCESS_SESSION_KEY, null)
+        prefs.edit().putString(PROCESS_SESSION_KEY, processSessionId).commit()
+        return !previousSession.isNullOrBlank() && previousSession != processSessionId
+    }
 
     fun setLiveAudioActive(context: Context, active: Boolean) {
         update(context, "liveAudioActive", active)
