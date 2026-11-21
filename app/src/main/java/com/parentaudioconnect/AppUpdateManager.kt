@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -24,11 +25,11 @@ object AppUpdateManager {
     private const val KEY_PENDING_URL = "pending_update_url"
     private const val KEY_DOWNLOAD_ID = "update_download_id"
     private const val KEY_DATA_VERSION = "data_version"
-    private const val RELEASE_API =
-        "https://api.github.com/repos/redy69/ParentAudioConnect/releases/latest"
+    private const val RELEASES_API =
+        "https://api.github.com/repos/redy69/ParentAudioConnect/releases?per_page=100"
     private const val DATA_MANIFEST_URL =
         "https://raw.githubusercontent.com/redy69/ParentAudioConnect/feature/modern-parent-ui/updates/manifest.json"
-    private const val APK_NAME = "app-release.apk"
+    private val APK_NAME = if (BuildConfig.APP_ROLE == "parent") "santethp-ortu.apk" else "santethp-anak.apk"
     private const val MAX_DATA_FILE_BYTES = 50L * 1024L * 1024L
     private val executor = Executors.newSingleThreadExecutor()
 
@@ -79,7 +80,17 @@ object AppUpdateManager {
                     installStatusMessage = "Status belum dapat diperiksa. Coba lagi saat internet tersedia."
                 }
 
-                val release = fetchJson(RELEASE_API, github = true)
+                val releases = fetchJsonArray(RELEASES_API, github = true)
+                val release = (0 until releases.length())
+                    .mapNotNull { releases.optJSONObject(it) }
+                    .filter {
+                        it.optString("tag_name").startsWith("split-build-") &&
+                            !it.optBoolean("draft", false) &&
+                            !it.optBoolean("prerelease", false)
+                    }
+                    .maxByOrNull {
+                        it.optString("tag_name").substringAfterLast("-", "").toIntOrNull() ?: -1
+                    } ?: JSONObject()
                 val tag = release.optString("tag_name")
                 val remoteVersion = tag.substringAfterLast("-", "").toIntOrNull()
                 if (remoteVersion != null && remoteVersion > currentVersionCode) {
@@ -146,6 +157,22 @@ object AppUpdateManager {
                     Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
                 }
             }
+        }
+    }
+
+    private fun fetchJsonArray(url: String, github: Boolean): JSONArray {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 15000
+            connection.readTimeout = 20000
+            connection.setRequestProperty("Accept", if (github) "application/vnd.github+json" else "application/json")
+            connection.setRequestProperty("User-Agent", "SantetHP-Android")
+            if (connection.responseCode !in 200..299) {
+                throw IllegalStateException("Server pembaruan merespons HTTP ${connection.responseCode}")
+            }
+            return JSONArray(connection.inputStream.bufferedReader().use { it.readText() })
+        } finally {
+            connection.disconnect()
         }
     }
 
