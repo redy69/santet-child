@@ -65,6 +65,8 @@ class ChildAudioConnectionService : Service() {
         }
         private const val CHANNEL_ID = "child_audio_connection"
         private const val NOTIFICATION_ID = 4201
+        private const val RECOVERY_CHANNEL_ID = "child_audio_recovery"
+        private const val RECOVERY_NOTIFICATION_ID = 4203
         private const val WORKER_URL = "https://parent-audio-token.yudhis-r15.workers.dev/token"
     }
 
@@ -140,6 +142,7 @@ class ChildAudioConnectionService : Service() {
             // activity has already left the foreground or permission was revoked.
             // Fail closed: do not capture audio and do not crash the app process.
             Log.e("SantetHP-Audio", "Foreground audio service was not allowed to start", error)
+            showForegroundStartRecoveryNotification(prepareMicrophone)
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -602,6 +605,44 @@ class ChildAudioConnectionService : Service() {
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun showForegroundStartRecoveryNotification(microphoneRequired: Boolean) {
+        val manager = getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    RECOVERY_CHANNEL_ID,
+                    "Pemulihan layanan audio",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Petunjuk saat Android menghentikan layanan audio SantetHP"
+                }
+            )
+        }
+        val openApp = PendingIntent.getActivity(
+            this,
+            RECOVERY_NOTIFICATION_ID,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val body = if (microphoneRequired) {
+            "Layanan percakapan belum dapat disiapkan oleh Android. Buka SantetHP di HP anak agar izin dan layanan mikrofon disiapkan kembali. Mikrofon tetap mati sampai orang tua memulai percakapan."
+        } else {
+            "Layanan penerima audio belum dapat dimulai. Buka SantetHP di HP anak untuk menyambungkan ulang layanan audio."
+        }
+        val notification = NotificationCompat.Builder(this, RECOVERY_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+            .setContentTitle("SantetHP • Layanan audio perlu dipulihkan")
+            .setContentText(if (microphoneRequired) "Buka SantetHP untuk menyiapkan percakapan." else "Buka SantetHP untuk menyambungkan audio kembali.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openApp)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        manager.notify(RECOVERY_NOTIFICATION_ID, notification)
     }
 
     private fun notification(message: String): Notification {
