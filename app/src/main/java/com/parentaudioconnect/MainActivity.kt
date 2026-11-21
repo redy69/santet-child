@@ -213,6 +213,8 @@ private lateinit var playMp3Button: Button
     private var parentConversationMuted = false
     private var pendingConversationMicPermission = false
     private var conversationChildAudioTrackActive = false
+    private var conversationChildAudioTimedOut = false
+    private var conversationAudioTimeoutJob: kotlinx.coroutines.Job? = null
     private var conversationStartInFlight = false
     private var conversationStartGeneration = 0L
     private var activeConversationCode: String? = null
@@ -7680,6 +7682,7 @@ private var receivedMp3File: File? = null
         val page = liveConversationPage ?: return
         val status = statusOverride ?: when {
             !isConversationActive -> "Siap memulai percakapan"
+            !conversationChildAudioTrackActive && conversationChildAudioTimedOut -> "HP anak belum mengirim audio. Periksa koneksi dan pastikan layanan Percakapan siap di HP anak. Jika aplikasi Anak diswipe dan layanannya berhenti, buka SantetHP di HP anak untuk menyiapkannya kembali."
             !conversationChildAudioTrackActive -> "Menghubungkan suara HP anak…"
             parentConversationMuted -> "Mikrofon ortu mute • suara anak tetap diterima"
             else -> "Percakapan dua arah aktif"
@@ -7714,6 +7717,9 @@ private var receivedMp3File: File? = null
         val generation = ++conversationStartGeneration
         activeConversationCode = code
         conversationChildAudioTrackActive = false
+        conversationChildAudioTimedOut = false
+        conversationAudioTimeoutJob?.cancel()
+        conversationAudioTimeoutJob = null
         renderLiveConversationPage("Menghubungkan ruang percakapan…")
 
         val continueOnRoom: () -> Unit = continueOnRoom@{
@@ -7764,6 +7770,16 @@ private var receivedMp3File: File? = null
                                     stopButton.visibility = View.VISIBLE
                                     statusText.text = "Percakapan langsung sedang disiapkan"
                                     renderLiveConversationPage("Perintah terkirim • menunggu suara HP anak…")
+                                    conversationAudioTimeoutJob?.cancel()
+                                    conversationAudioTimeoutJob = activityScope.launch {
+                                        kotlinx.coroutines.delay(15_000)
+                                        if (generation == conversationStartGeneration &&
+                                            isConversationActive && !conversationChildAudioTrackActive
+                                        ) {
+                                            conversationChildAudioTimedOut = true
+                                            renderLiveConversationPage()
+                                        }
+                                    }
                                 } catch (error: Exception) {
                                     conversationStartInFlight = false
                                     requestRemoteAudio(code, "talk_stop") { _, _ -> }
@@ -7827,6 +7843,9 @@ private var receivedMp3File: File? = null
             isMicrophoneActive = false
             parentConversationMuted = false
             conversationChildAudioTrackActive = false
+            conversationChildAudioTimedOut = false
+            conversationAudioTimeoutJob?.cancel()
+            conversationAudioTimeoutJob = null
             ParentDriveBackupMediaGate.resume(
                 this@MainActivity,
                 ParentDriveBackupMediaGate.REASON_AUDIO_LIVE
