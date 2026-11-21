@@ -83,13 +83,26 @@ class AudioPlaybackService : Service() {
             // USAGE_MEDIA routes through Android's normal media output path.
             nextPlayer.setDataSource(file.absolutePath)
             nextPlayer.setOnPreparedListener { prepared ->
-                raiseMediaVolumeForPlayback()
-                prepared.start()
-                // Publish active only after MediaPlayer has actually entered playback.
-                ChildAudioActivityReporter.setMp3AudioActive(applicationContext, prepared.isPlaying)
-                startPlaybackHeartbeat()
-                val manager = getSystemService(NotificationManager::class.java)
-                manager.notify(NOTIFICATION_ID, buildNotification("Pesan suara sedang diputar"))
+                try {
+                    raiseMediaVolumeForPlayback()
+                    prepared.start()
+                    if (!prepared.isPlaying) {
+                        throw IllegalStateException("MediaPlayer belum mulai memutar audio")
+                    }
+                    // Publish active only after MediaPlayer has actually entered playback.
+                    ChildAudioActivityReporter.setMp3AudioActive(applicationContext, true)
+                    startPlaybackHeartbeat()
+                    val manager = getSystemService(NotificationManager::class.java)
+                    manager.notify(NOTIFICATION_ID, buildNotification("Pesan suara sedang diputar"))
+                } catch (error: Exception) {
+                    android.util.Log.e("SantetHP-MP3", "MediaPlayer gagal memulai playback", error)
+                    stopPlaybackHeartbeat()
+                    ChildAudioActivityReporter.setMp3AudioActive(applicationContext, false)
+                    showPlaybackRecoveryNotification("MP3 sudah diterima, tetapi audio tidak berhasil mulai diputar. Coba kirim ulang dari HP orang tua.")
+                    releasePlayer()
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf(startId)
+                }
             }
             nextPlayer.setOnCompletionListener {
                 stopPlaybackHeartbeat()
