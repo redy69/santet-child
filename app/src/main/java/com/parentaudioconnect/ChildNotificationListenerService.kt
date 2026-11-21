@@ -78,13 +78,15 @@ class ChildNotificationListenerService : NotificationListenerService() {
     }
 
     private fun publishConnectedStatusIfEligible() {
-        updateListenerConnectionStatus(true)
+        val optedIn = getSharedPreferences("parent_audio", MODE_PRIVATE)
+            .getBoolean("child_notification_monitoring_enabled", false)
+        updateListenerConnectionStatus(optedIn)
     }
 
     private fun updateListenerConnectionStatus(connected: Boolean, force: Boolean = false) {
         val prefs = getSharedPreferences("parent_audio", MODE_PRIVATE)
         if (prefs.getString("pair_role", null) != "child") return
-        if (connected && !prefs.getBoolean("child_notification_monitoring_enabled", false)) return
+        val optedIn = prefs.getBoolean("child_notification_monitoring_enabled", false)
         val code = prefs.getString("pair_code", null)?.takeIf { it.isNotBlank() } ?: return
 
         val firebaseAuth = FirebaseAuth.getInstance()
@@ -100,8 +102,9 @@ class ChildNotificationListenerService : NotificationListenerService() {
             .document(code)
             .update(
                 mapOf(
-                    "notificationListenerConnected" to connected,
-                    "notificationListenerUpdatedAt" to FieldValue.serverTimestamp()
+                    "notificationListenerConnected" to (connected && optedIn),
+                    "notificationListenerUpdatedAt" to FieldValue.serverTimestamp(),
+                    "notificationMonitoringConsent" to optedIn
                 )
             )
             .addOnSuccessListener {
@@ -192,8 +195,12 @@ class ChildNotificationListenerService : NotificationListenerService() {
             .document(code)
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
-                val configured = snapshot.get("notificationAllowedPackages") as? List<*>
-                allowedNotificationPackages = configured?.mapNotNull { it as? String }?.toSet()
+                val configured = snapshot.get("notificationAllowedPackages")
+                allowedNotificationPackages = when (configured) {
+                    null -> null // No filter has been configured: all apps are allowed.
+                    is List<*> -> configured.filterIsInstance<String>().toSet()
+                    else -> emptySet() // Invalid filter data fails closed.
+                }
             }
     }
 
