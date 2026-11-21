@@ -1,33 +1,33 @@
 {
   "project_info": {
-    "project_number": "510992503464",
-    "project_id": "parentaudioconnect",
-    "storage_bucket": "parentaudioconnect.firebasestorage.app"
+    "project_number": "561930422392",
+    "project_id": "handroid-65ab1",
+    "storage_bucket": "handroid-65ab1.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:510992503464:android:dc7ad2dcec068eb927289d",
+        "mobilesdk_app_id": "1:561930422392:android:f11f44f386541c51f1c58d",
         "android_client_info": {
-          "package_name": "com.parentaudioconnect"
+          "package_name": "com.santethp"
         }
       },
       "oauth_client": [
         {
-          "client_id": "510992503464-o2h2vhte1saeg9gp4m5hcnkgabgo2qjp.apps.googleusercontent.com",
+          "client_id": "561930422392-v9s3rejh0agim1ak72ir0mt7r5lnujs9.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyArnd_Ejlu045Sgu_UYKaD0BLs3BtFLTDg"
+          "current_key": "AIzaSyDgISnHiy8g3B07w_5G6FzVffxAWCAMQ4I"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "510992503464-o2h2vhte1saeg9gp4m5hcnkgabgo2qjp.apps.googleusercontent.com",
+              "client_id": "561930422392-v9s3rejh0agim1ak72ir0mt7r5lnujs9.apps.googleusercontent.com",
               "client_type": 3
             }
           ]
@@ -36,35 +36,27 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:510992503464:android:f9f116e0f498d65727289d",
+        "mobilesdk_app_id": "1:561930422392:android:7af60b56e5fc542af1c58d",
         "android_client_info": {
-          "package_name": "com.santethp"
+          "package_name": "com.santethp.parent"
         }
       },
       "oauth_client": [
         {
-          "client_id": "510992503464-q16241ltaf2dj3ousihuuk7f9b02gmri.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.santethp",
-            "certificate_hash": "9e6b4eb435fc2b6e62b952776525dd037982f2c6"
-          }
-        },
-        {
-          "client_id": "510992503464-o2h2vhte1saeg9gp4m5hcnkgabgo2qjp.apps.googleusercontent.com",
+          "client_id": "561930422392-v9s3rejh0agim1ak72ir0mt7r5lnujs9.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyArnd_Ejlu045Sgu_UYKaD0BLs3BtFLTDg"
+          "current_key": "AIzaSyDgISnHiy8g3B07w_5G6FzVffxAWCAMQ4I"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "510992503464-o2h2vhte1saeg9gp4m5hcnkgabgo2qjp.apps.googleusercontent.com",
+              "client_id": "561930422392-v9s3rejh0agim1ak72ir0mt7r5lnujs9.apps.googleusercontent.com",
               "client_type": 3
             }
           ]
