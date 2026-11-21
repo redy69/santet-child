@@ -427,7 +427,7 @@ class ChildAudioConnectionService : Service() {
                         if (micForegroundPrepared) "Siap menerima percakapan • mikrofon anak mati • MP3 aktif"
                         else "Terhubung • audio live dan MP3 aktif • mikrofon mati"
                     )
-                    pendingTalkMicEnabled?.let { desiredMicState ->
+                    if (pendingTalkMicEnabled != null) {
                         serviceScope.launch { applyPendingTalkMicrophoneState() }
                     }
                     return
