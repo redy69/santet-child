@@ -18,5 +18,7 @@ class RemoteCameraService : Service() {
         const val ACTION_SWITCH_CAMERA = "com.santethp.camera.SWITCH"
         const val ACTION_REVOKE_AUDIO = "com.santethp.camera.REVOKE_AUDIO"
         const val ACTION_DISARM = "com.santethp.camera.DISARM"
+        const val EXTRA_REQUEST_ID = "request_id"
+        const val EXTRA_SERVER_ID = "livekit_server_id"
     }
 }
