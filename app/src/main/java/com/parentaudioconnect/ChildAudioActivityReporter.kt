@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.android.gms.tasks.Task
 
 /**
  * Publishes child-side live-audio activity to the paired document so the parent
@@ -22,14 +23,14 @@ object ChildAudioActivityReporter {
      * Clear both published activity flags so the parent never mistakes a dead
      * audio process for an active stream. This does not enable or disable capture.
      */
-    fun clearAfterProcessRestart(context: Context) {
+    fun clearAfterProcessRestart(context: Context): Task<Void>? {
         val prefs = context.getSharedPreferences("parent_audio", Context.MODE_PRIVATE)
         val code = prefs.getString("pair_code", null)
         val role = prefs.getString("pair_role", null)
-        if (code.isNullOrBlank() || role != "child") return
+        if (code.isNullOrBlank() || role != "child") return null
 
         val now = FieldValue.serverTimestamp()
-        FirebaseFirestore.getInstance()
+        return FirebaseFirestore.getInstance()
             .collection("pairings")
             .document(code)
             .update(
@@ -41,9 +42,6 @@ object ChildAudioActivityReporter {
                     "audioActivityAt" to now
                 )
             )
-            .addOnFailureListener { error ->
-                Log.e(TAG, "Unable to clear stale audio activity after process restart for pairing $code", error)
-            }
     }
 
     fun setMp3AudioActive(context: Context, active: Boolean) {
