@@ -96,8 +96,8 @@ class ChildAudioConnectionService : Service() {
         // Android supplies a null intent when it recreates a START_STICKY service
         // after process death. Both audio services from the old process are gone,
         // so clear their last published activity flags before reconnecting receive-only.
-        if (intent == null) {
-            ChildAudioActivityReporter.clearAfterProcessRestart(applicationContext)
+        val processRestart = intent == null
+        if (processRestart) {
             childTalkMicActive = false
             pendingTalkMicEnabled = null
             activeRemoteAudioTrackIds.clear()
@@ -161,7 +161,19 @@ class ChildAudioConnectionService : Service() {
         watchForPairingRemoval()
         if (!connecting && room == null) {
             connecting = true
-            serviceScope.launch { connectWithRetry() }
+            serviceScope.launch {
+                if (processRestart) {
+                    try {
+                        // Wait for stale Firestore activity flags to clear before
+                        // reconnecting. Otherwise a late "false" write could race
+                        // with a fresh "true" heartbeat from the new session.
+                        ChildAudioActivityReporter.clearAfterProcessRestart(applicationContext)?.await()
+                    } catch (error: Exception) {
+                        Log.w("SantetHP-Audio", "Could not clear stale audio activity before reconnect", error)
+                    }
+                }
+                connectWithRetry()
+            }
         }
         // Keep the receive-only audio transport eligible for recovery after process death.
         // Android restarts a START_STICKY service with a null intent: on that fresh
