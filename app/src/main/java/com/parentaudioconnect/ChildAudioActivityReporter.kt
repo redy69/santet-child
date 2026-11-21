@@ -21,7 +21,8 @@ object ChildAudioActivityReporter {
     fun beginProcessSession(context: Context): Boolean {
         val prefs = context.getSharedPreferences("parent_audio", Context.MODE_PRIVATE)
         val previousSession = prefs.getString(PROCESS_SESSION_KEY, null)
-        prefs.edit().putString(PROCESS_SESSION_KEY, processSessionId).commit()
+        val saved = prefs.edit().putString(PROCESS_SESSION_KEY, processSessionId).commit()
+        if (!saved) Log.w(TAG, "Unable to persist child audio process session marker")
         return !previousSession.isNullOrBlank() && previousSession != processSessionId
     }
 
@@ -30,9 +31,10 @@ object ChildAudioActivityReporter {
     }
 
     /**
-     * A null-intent START_STICKY restart means the previous process is gone.
-     * Clear both published activity flags so the parent never mistakes a dead
-     * audio process for an active stream. This does not enable or disable capture.
+     * When a new app process takes over the audio service, the previous playback
+     * and room transports no longer exist. Clear both published activity flags
+     * before reconnecting so the parent cannot mistake stale state for live audio.
+     * This does not enable or disable microphone capture.
      */
     fun clearAfterProcessRestart(context: Context): Task<Void>? {
         val prefs = context.getSharedPreferences("parent_audio", Context.MODE_PRIVATE)
