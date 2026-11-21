@@ -36,6 +36,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -71,6 +73,7 @@ class ChildAudioConnectionService : Service() {
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val talkMicMutex = Mutex()
     private var room: Room? = null
     private var roomEventsJob: Job? = null
     private var reconnectJob: Job? = null
@@ -547,52 +550,76 @@ class ChildAudioConnectionService : Service() {
     }
 
     private suspend fun applyTalkMicrophoneState(enabled: Boolean) {
-        val activeRoom = room
-        if (activeRoom == null) {
-            pendingTalkMicEnabled = enabled
-            updateNotification(
-                if (enabled) "Menyiapkan ruang percakapan • mikrofon belum aktif"
-                else "Mikrofon anak mati • menunggu orang tua"
-            )
-            return
-        }
-        try {
-            if (childTalkMicActive == enabled) {
-                pendingTalkMicEnabled = null
-                return
-            }
-            var changed = activeRoom.localParticipant.setMicrophoneEnabled(enabled)
-            if (!changed && pendingTalkMicEnabled == enabled) {
-                // LiveKit can fail a publish/mute transition transiently while the
-                // room is settling. Retry once, but only if no newer parent command
-                // has superseded this requested state.
-                delay(600)
-                if (room === activeRoom && pendingTalkMicEnabled == enabled &&
-                    (!enabled || micForegroundPrepared)
-                ) {
-                    changed = activeRoom.localParticipant.setMicrophoneEnabled(enabled)
+        // Serialize LiveKit microphone transitions. If START and STOP arrive while
+        // one transition is in flight, always apply the newest requested state last.
+        talkMicMutex.withLock {
+            var desiredState = pendingTalkMicEnabled ?: enabled
+            while (true) {
+                val activeRoom = room
+                if (activeRoom == null) {
+                    pendingTalkMicEnabled = desiredState
+                    updateNotification(
+                        if (desiredState) "Menyiapkan ruang percakapan • mikrofon belum aktif"
+                        else "Mikrofon anak mati • menunggu orang tua"
+                    )
+                    return@withLock
+                }
+
+                if (childTalkMicActive == desiredState) {
+                    if (pendingTalkMicEnabled == desiredState) pendingTalkMicEnabled = null
+                    return@withLock
+                }
+
+                try {
+                    var changed = activeRoom.localParticipant.setMicrophoneEnabled(desiredState)
+                    if (!changed && pendingTalkMicEnabled == desiredState) {
+                        // Retry one transient LiveKit failure, unless a newer command
+                        // arrived or the room changed while the transition was pending.
+                        delay(600)
+                        if (pendingTalkMicEnabled != desiredState) {
+                            desiredState = pendingTalkMicEnabled ?: return@withLock
+                            continue
+                        }
+                        if (room === activeRoom && (!desiredState || micForegroundPrepared)) {
+                            changed = activeRoom.localParticipant.setMicrophoneEnabled(desiredState)
+                        }
+                    }
+
+                    if (pendingTalkMicEnabled != desiredState) {
+                        desiredState = pendingTalkMicEnabled ?: return@withLock
+                        continue
+                    }
+                    if (room !== activeRoom) return@withLock
+
+                    if (!changed) {
+                        updateNotification(
+                            if (desiredState) "Mikrofon percakapan belum berhasil aktif • menunggu koneksi stabil"
+                            else "Mikrofon belum berhasil dimatikan • mencoba kembali saat tersambung"
+                        )
+                        return@withLock
+                    }
+
+                    childTalkMicActive = desiredState
+                    pendingTalkMicEnabled = null
+                    val audioActive = desiredState || activeRemoteAudioTrackIds.isNotEmpty()
+                    ChildAudioActivityReporter.setLiveAudioActive(applicationContext, audioActive)
+                    if (audioActive) startLiveAudioHeartbeat() else stopLiveAudioHeartbeat()
+                    updateNotification(
+                        if (desiredState) "Percakapan aktif • mikrofon anak menyala"
+                        else if (activeRemoteAudioTrackIds.isNotEmpty()) "Suara orang tua aktif • mikrofon anak mati"
+                        else "Siap • mikrofon anak mati • MP3 tetap terhubung"
+                    )
+                    return@withLock
+                } catch (error: Exception) {
+                    Log.w("SantetHP-Audio", "Could not change child conversation microphone", error)
+                    if (pendingTalkMicEnabled != desiredState) {
+                        desiredState = pendingTalkMicEnabled ?: return@withLock
+                        continue
+                    }
+                    updateNotification("Gagal mengubah mikrofon percakapan")
+                    return@withLock
                 }
             }
-            if (!changed) {
-                updateNotification(
-                    if (enabled) "Mikrofon percakapan belum berhasil aktif • menunggu koneksi stabil"
-                    else "Mikrofon belum berhasil dimatikan • mencoba kembali saat tersambung"
-                )
-                return
-            }
-            childTalkMicActive = enabled
-            pendingTalkMicEnabled = null
-            val audioActive = enabled || activeRemoteAudioTrackIds.isNotEmpty()
-            ChildAudioActivityReporter.setLiveAudioActive(applicationContext, audioActive)
-            if (audioActive) startLiveAudioHeartbeat() else stopLiveAudioHeartbeat()
-            updateNotification(
-                if (enabled) "Percakapan aktif • mikrofon anak menyala"
-                else if (activeRemoteAudioTrackIds.isNotEmpty()) "Suara orang tua aktif • mikrofon anak mati"
-                else "Siap • mikrofon anak mati • MP3 tetap terhubung"
-            )
-        } catch (error: Exception) {
-            Log.w("SantetHP-Audio", "Could not change child conversation microphone", error)
-            updateNotification("Gagal mengaktifkan mikrofon percakapan")
         }
     }
 
