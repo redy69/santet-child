@@ -72,8 +72,7 @@ jobs:
       - name: Report APK sizes
         run: |
           set -euo pipefail
-          ls -lh app/build/outputs/apk/anak/debug/app-anak-debug.apk app/build/outputs/apk/ortu/debug/app-ortu-debug.apk
-          du -b app/build/outputs/apk/anak/debug/app-anak-debug.apk app/build/outputs/apk/ortu/debug/app-ortu-debug.apk
+          find app/build/outputs/apk -type f -name "*.apk" -print -exec du -b {} ;
       - name: Upload Anak debug APK for validation only
         uses: actions/upload-artifact@v4
         with:
