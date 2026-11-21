@@ -345,7 +345,11 @@ class ChildAudioConnectionService : Service() {
                                         if (room === candidateRoom) {
                                             room = null
                                             activeRemoteAudioTrackIds.clear()
-                                            if (childTalkMicActive) pendingTalkMicEnabled = true
+                                            // Preserve an explicit STOP command across reconnects.
+                                            // Never turn a failed stop into a later microphone re-enable.
+                                            if (childTalkMicActive && pendingTalkMicEnabled != false) {
+                                                pendingTalkMicEnabled = true
+                                            }
                                             childTalkMicActive = false
                                             stopLiveAudioHeartbeat()
                                             ChildAudioActivityReporter.setLiveAudioActive(
@@ -405,8 +409,8 @@ class ChildAudioConnectionService : Service() {
                         if (micForegroundPrepared) "Siap menerima percakapan • mikrofon anak mati • MP3 aktif"
                         else "Terhubung • audio live dan MP3 aktif • mikrofon mati"
                     )
-                    if (pendingTalkMicEnabled == true) {
-                        serviceScope.launch { applyTalkMicrophoneState(true) }
+                    pendingTalkMicEnabled?.let { desiredMicState ->
+                        serviceScope.launch { applyTalkMicrophoneState(desiredMicState) }
                     }
                     return
                 } catch (error: CancellationException) {
@@ -416,7 +420,11 @@ class ChildAudioConnectionService : Service() {
                     roomEventsJob = null
                     room = null
                     connectedServerId = null
-                    if (childTalkMicActive) pendingTalkMicEnabled = true
+                    // Keep a pending STOP authoritative; a reconnect must not
+                    // resurrect microphone capture after the parent has stopped it.
+                    if (childTalkMicActive && pendingTalkMicEnabled != false) {
+                        pendingTalkMicEnabled = true
+                    }
                     childTalkMicActive = false
                     mp3TransferManager = null
                     activeRemoteAudioTrackIds.clear()
@@ -538,9 +546,23 @@ class ChildAudioConnectionService : Service() {
                 pendingTalkMicEnabled = null
                 return
             }
-            val changed = activeRoom.localParticipant.setMicrophoneEnabled(enabled)
+            var changed = activeRoom.localParticipant.setMicrophoneEnabled(enabled)
+            if (!changed && pendingTalkMicEnabled == enabled) {
+                // LiveKit can fail a publish/mute transition transiently while the
+                // room is settling. Retry once, but only if no newer parent command
+                // has superseded this requested state.
+                delay(600)
+                if (room === activeRoom && pendingTalkMicEnabled == enabled &&
+                    (!enabled || micForegroundPrepared)
+                ) {
+                    changed = activeRoom.localParticipant.setMicrophoneEnabled(enabled)
+                }
+            }
             if (!changed) {
-                updateNotification("Gagal mengubah mikrofon percakapan")
+                updateNotification(
+                    if (enabled) "Mikrofon percakapan belum berhasil aktif • menunggu koneksi stabil"
+                    else "Mikrofon belum berhasil dimatikan • mencoba kembali saat tersambung"
+                )
                 return
             }
             childTalkMicActive = enabled
