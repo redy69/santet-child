@@ -1,4 +1,5 @@
 name: Validate background lifecycle patch
+# Keep the Anak and Ortu debug compile check active for each lifecycle fix.
 
 on:
   push:
