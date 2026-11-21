@@ -85,9 +85,11 @@ class ChildAudioConnectionService : Service() {
     @Volatile private var childTalkMicActive = false
     @Volatile private var connectedServerId: String? = null
     private var serverSwitchJob: Job? = null
+    private var processRestartDetected = false
 
     override fun onCreate() {
         super.onCreate()
+        processRestartDetected = ChildAudioActivityReporter.beginProcessSession(applicationContext)
         runningInstance = this
         createNotificationChannel()
     }
@@ -96,7 +98,7 @@ class ChildAudioConnectionService : Service() {
         // Android supplies a null intent when it recreates a START_STICKY service
         // after process death. Both audio services from the old process are gone,
         // so clear their last published activity flags before reconnecting receive-only.
-        val processRestart = intent == null
+        val processRestart = processRestartDetected || intent == null
         if (processRestart) {
             childTalkMicActive = false
             pendingTalkMicEnabled = null
