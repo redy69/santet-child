@@ -658,8 +658,8 @@ private var receivedMp3File: File? = null
             visibility = View.GONE
         }
 
-        parentButton.setOnClickListener { startParentGoogleSignIn() }
-        childButton.setOnClickListener { enterChildMode() }
+        parentButton.setOnClickListener { if (BuildConfig.APP_ROLE == "parent") startParentGoogleSignIn() }
+        childButton.setOnClickListener { if (BuildConfig.APP_ROLE == "child") enterChildMode() }
         startButton.setOnClickListener { showLiveConversationPage() }
         stopButton.setOnClickListener { showLiveConversationPage() }
         sendMp3Button.setOnClickListener { openMp3Picker() }
@@ -1458,6 +1458,14 @@ private var receivedMp3File: File? = null
     }
 
     private fun showRoleSelection() {
+        val parentBuild = BuildConfig.APP_ROLE == "parent"
+        roleIntroText.text = if (parentBuild) {
+            "SANTETHP ORTU\\nMasuk dengan akun Google untuk mengelola perangkat anak."
+        } else {
+            "SANTETHP ANAK\\nHubungkan perangkat ini menggunakan kode dari HP orang tua."
+        }
+        parentButton.text = "LOGIN DENGAN GOOGLE\\nMasuk sebagai Orang Tua"
+        childButton.text = "HUBUNGKAN HP INI\\nMasukkan kode dari HP orang tua"
         roleIntroText.visibility = View.VISIBLE
         childModePanel.visibility = View.GONE
         childLocationPanel.visibility = View.GONE
@@ -1468,8 +1476,8 @@ private var receivedMp3File: File? = null
         parentOnlyViews.forEach { it.visibility = View.GONE }
         additionalControlsHeading.visibility = View.GONE
         actionButtonsRow.visibility = View.GONE
-        parentButton.visibility = View.VISIBLE
-        childButton.visibility = View.VISIBLE
+        parentButton.visibility = if (parentBuild) View.VISIBLE else View.GONE
+        childButton.visibility = if (parentBuild) View.GONE else View.VISIBLE
         selectedChildButton.visibility = View.GONE
         connectionStatusText.visibility = View.GONE
         updateInfoText.visibility = View.GONE
@@ -1986,6 +1994,7 @@ private var receivedMp3File: File? = null
     }
 
     private fun returnParentToRoleSelection() {
+        if (BuildConfig.APP_ROLE != "parent") return
         // No linked child devices remain: leave the parent dashboard and reset
         // only the pairing/role state, preserving unrelated app preferences.
         childListeners.values.forEach { it.remove() }
@@ -2021,6 +2030,7 @@ private var receivedMp3File: File? = null
     }
 
     private fun showParentDashboard() {
+        if (BuildConfig.APP_ROLE != "parent") return
         if (mapsPageOverlay?.parent != null) restoreMapsPageToDashboard()
         rootLayout.findViewWithTag<View>("santethp_brand_header")?.visibility = View.VISIBLE
         requestParentNotificationPermission()
@@ -2105,6 +2115,7 @@ private var receivedMp3File: File? = null
     }
 
     private fun showChildConnectedScreen() {
+        if (BuildConfig.APP_ROLE != "child") return
         // A delayed audio/pairing callback must never reopen child mode after unlink.
         // The simplified screen is valid only while both in-memory and persisted role
         // state still identify this device as a paired child.
@@ -2253,6 +2264,7 @@ private var receivedMp3File: File? = null
     }
 
     private fun enterChildMode() {
+        if (BuildConfig.APP_ROLE != "child") return
         val current = auth.currentUser
         if (current?.isAnonymous == true) {
             showCodeDialog()
@@ -2270,6 +2282,7 @@ private var receivedMp3File: File? = null
     }
 
     private fun startParentGoogleSignIn() {
+        if (BuildConfig.APP_ROLE != "parent") return
         val webClientIdResource = resources.getIdentifier("default_web_client_id", "string", packageName)
         if (webClientIdResource == 0) {
             Toast.makeText(this, "Konfigurasi Google belum tersedia", Toast.LENGTH_LONG).show()
@@ -2325,6 +2338,7 @@ private var receivedMp3File: File? = null
     }
 
     private fun activateParentAccount() {
+        if (BuildConfig.APP_ROLE != "parent") return
         val user = auth.currentUser ?: return
         if (user.isAnonymous) {
             Toast.makeText(this, "Login Google belum selesai", Toast.LENGTH_LONG).show()
@@ -3960,7 +3974,55 @@ private var receivedMp3File: File? = null
 
     private fun restoreSavedPairing() {
         val prefs = getSharedPreferences("parent_audio", MODE_PRIVATE)
-        val role = prefs.getString("pair_role", null) ?: return
+        val expectedRole = BuildConfig.APP_ROLE
+        val role = prefs.getString("pair_role", null)
+
+        if (role.isNullOrBlank()) {
+            currentRole = ""
+            if (expectedRole == "child") {
+                if (auth.currentUser?.isAnonymous == true) {
+                    currentRole = "child"
+                    showCodeDialog()
+                } else {
+                    auth.signOut()
+                    auth.signInAnonymously().addOnCompleteListener(this) { task ->
+                        if (task.isSuccessful) {
+                            currentRole = "child"
+                            showCodeDialog()
+                        } else {
+                            showRoleSelection()
+                            statusText.text = "Gagal menyiapkan identitas perangkat anak. Periksa koneksi lalu coba lagi."
+                        }
+                    }
+                }
+            } else {
+                showRoleSelection()
+            }
+            return
+        }
+
+        if (role != expectedRole) {
+            // A role saved by the former combined app must never open the wrong
+            // dashboard in either dedicated application. Keep unrelated settings.
+            prefs.edit().remove("pair_role").remove("pair_code").apply()
+            currentRole = ""
+            auth.signOut()
+            if (expectedRole == "child") {
+                auth.signInAnonymously().addOnCompleteListener(this) { task ->
+                    if (task.isSuccessful) {
+                        currentRole = "child"
+                        showCodeDialog()
+                    } else {
+                        showRoleSelection()
+                        statusText.text = "Gagal menyiapkan identitas perangkat anak. Periksa koneksi lalu coba lagi."
+                    }
+                }
+            } else {
+                showRoleSelection()
+            }
+            return
+        }
+
         currentRole = role
         if (role == "parent") {
             if (auth.currentUser?.isAnonymous == false) {
@@ -3987,7 +4049,6 @@ private var receivedMp3File: File? = null
             verifyChildPairingBeforeShowing(code)
         }
     }
-
 
 
     private fun updateChildLocationPanel() {
@@ -4528,6 +4589,7 @@ private var receivedMp3File: File? = null
     }
 
     private fun createPairingCode() {
+        if (BuildConfig.APP_ROLE != "parent") return
         val uid = auth.currentUser?.uid
 
         if (uid == null) {
