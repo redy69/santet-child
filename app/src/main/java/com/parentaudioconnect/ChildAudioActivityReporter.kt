@@ -17,6 +17,35 @@ object ChildAudioActivityReporter {
         update(context, "liveAudioActive", active)
     }
 
+    /**
+     * A null-intent START_STICKY restart means the previous process is gone.
+     * Clear both published activity flags so the parent never mistakes a dead
+     * audio process for an active stream. This does not enable or disable capture.
+     */
+    fun clearAfterProcessRestart(context: Context) {
+        val prefs = context.getSharedPreferences("parent_audio", Context.MODE_PRIVATE)
+        val code = prefs.getString("pair_code", null)
+        val role = prefs.getString("pair_role", null)
+        if (code.isNullOrBlank() || role != "child") return
+
+        val now = FieldValue.serverTimestamp()
+        FirebaseFirestore.getInstance()
+            .collection("pairings")
+            .document(code)
+            .update(
+                mapOf(
+                    "liveAudioActive" to false,
+                    "mp3AudioActive" to false,
+                    "liveAudioActivityAt" to now,
+                    "mp3AudioActivityAt" to now,
+                    "audioActivityAt" to now
+                )
+            )
+            .addOnFailureListener { error ->
+                Log.e(TAG, "Unable to clear stale audio activity after process restart for pairing $code", error)
+            }
+    }
+
     fun setMp3AudioActive(context: Context, active: Boolean) {
         update(context, "mp3AudioActive", active)
     }
