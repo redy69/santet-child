@@ -56,7 +56,7 @@ android {
         targetSdk = 35
         versionCode = appVersionCode
         versionName = "1.0.$appVersionCode"
-        buildConfigField("String", "METERED_TURN_API_KEY", "\"\${meteredTurnApiKey}\"")
+        buildConfigField("String", "METERED_TURN_API_KEY", "\"${meteredTurnApiKey}\"")
     }
     signingConfigs {
         create("release") {
