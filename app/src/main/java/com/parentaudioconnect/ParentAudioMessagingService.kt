@@ -165,6 +165,7 @@ class ParentAudioMessagingService : FirebaseMessagingService() {
                 Log.i(TAG, "Remote audio command delivered: $command")
             } catch (error: Exception) {
                 Log.w(TAG, "Could not deliver remote audio command: $command", error)
+                if (command == "AUDIO_START") showAudioRecoveryNotification()
             }
             return
         }
@@ -200,6 +201,38 @@ class ParentAudioMessagingService : FirebaseMessagingService() {
         } else {
             Log.i(TAG, "FCM message ignored: no matching armed camera session")
         }
+    }
+
+
+    private fun showAudioRecoveryNotification() {
+        val manager = getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    AUDIO_RECOVERY_CHANNEL,
+                    "Pemulihan koneksi audio",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Petunjuk saat koneksi audio anak tidak dapat dimulai dari latar belakang"
+                }
+            )
+        }
+        val openApp = PendingIntent.getActivity(
+            this, 4301, android.content.Intent(this, MainActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val body = "Koneksi audio tidak dapat dimulai dari latar belakang. Buka SantetHP di HP anak agar layanan audio tersambung kembali."
+        val notification = NotificationCompat.Builder(this, AUDIO_RECOVERY_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_lock_silent_mode_off)
+            .setContentTitle("SantetHP • Koneksi audio perlu dipulihkan")
+            .setContentText("Buka SantetHP di HP anak untuk menyambungkan kembali audio.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openApp)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        manager.notify(AUDIO_RECOVERY_NOTIFICATION_ID, notification)
     }
 
     private fun showCameraStandbyRecoveryNotification() {
@@ -303,6 +336,8 @@ class ParentAudioMessagingService : FirebaseMessagingService() {
         private const val SAFE_ZONE_CHANNEL = "santethp_safe_zone_events"
         private const val TALK_CHANNEL = "santethp_talk_setup"
         private const val TALK_NOTIFICATION_ID = 4202
+        private const val AUDIO_RECOVERY_CHANNEL = "santethp_audio_recovery"
+        private const val AUDIO_RECOVERY_NOTIFICATION_ID = 4301
         private const val CAMERA_RECOVERY_CHANNEL = "santethp_camera_recovery"
         private const val CAMERA_RECOVERY_NOTIFICATION_ID = 4302
         private const val REGISTER_URL =
