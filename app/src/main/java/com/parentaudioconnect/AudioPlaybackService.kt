@@ -74,8 +74,9 @@ class AudioPlaybackService : Service() {
             nextPlayer.setDataSource(file.absolutePath)
             nextPlayer.setOnPreparedListener { prepared ->
                 raiseMediaVolumeForPlayback()
-                ChildAudioActivityReporter.setMp3AudioActive(applicationContext, true)
                 prepared.start()
+                // Publish active only after MediaPlayer has actually entered playback.
+                ChildAudioActivityReporter.setMp3AudioActive(applicationContext, prepared.isPlaying)
                 startPlaybackHeartbeat()
                 val manager = getSystemService(NotificationManager::class.java)
                 manager.notify(NOTIFICATION_ID, buildNotification("Pesan suara sedang diputar"))
