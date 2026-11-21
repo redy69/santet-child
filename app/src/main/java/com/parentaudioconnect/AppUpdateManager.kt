@@ -94,10 +94,10 @@ object AppUpdateManager {
                             }
                     }
                     .maxByOrNull {
-                        it.optString("tag_name").substringAfterLast("-", "").toIntOrNull() ?: -1
+                        it.optString("tag_name").substringAfterLast("-", "").removePrefix("v").toIntOrNull() ?: -1
                     } ?: JSONObject()
                 val tag = release.optString("tag_name")
-                val remoteVersion = tag.substringAfterLast("-", "").toIntOrNull()
+                val remoteVersion = tag.substringAfterLast("-", "").removePrefix("v").toIntOrNull()
                 if (remoteVersion != null && remoteVersion > currentVersionCode) {
                     val assets = release.optJSONArray("assets") ?: throw IllegalStateException("APK pembaruan tidak ditemukan")
                     var apkUrl: String? = null
