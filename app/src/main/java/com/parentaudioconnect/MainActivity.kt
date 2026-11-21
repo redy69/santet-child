@@ -1460,12 +1460,12 @@ private var receivedMp3File: File? = null
     private fun showRoleSelection() {
         val parentBuild = BuildConfig.APP_ROLE == "parent"
         roleIntroText.text = if (parentBuild) {
-            "SANTETHP ORTU\\nMasuk dengan akun Google untuk mengelola perangkat anak."
+            "SANTETHP ORTU\nMasuk dengan akun Google untuk mengelola perangkat anak."
         } else {
-            "SANTETHP ANAK\\nHubungkan perangkat ini menggunakan kode dari HP orang tua."
+            "SANTETHP ANAK\nHubungkan perangkat ini menggunakan kode dari HP orang tua."
         }
-        parentButton.text = "LOGIN DENGAN GOOGLE\\nMasuk sebagai Orang Tua"
-        childButton.text = "HUBUNGKAN HP INI\\nMasukkan kode dari HP orang tua"
+        parentButton.text = "LOGIN DENGAN GOOGLE\nMasuk sebagai Orang Tua"
+        childButton.text = "HUBUNGKAN HP INI\nMasukkan kode dari HP orang tua"
         roleIntroText.visibility = View.VISIBLE
         childModePanel.visibility = View.GONE
         childLocationPanel.visibility = View.GONE
