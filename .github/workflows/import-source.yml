@@ -1,0 +1,39 @@
+name: Import ParentAudioConnect snapshot
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout destination repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout pinned SantetHP source snapshot
+        uses: actions/checkout@v4
+        with:
+          repository: redy69/ParentAudioConnect
+          ref: 78f381fa9d98da3ca51f52ae4d123ff74757c634
+          path: source
+
+      - name: Create isolated source branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c migration/build-713-source
+          rsync -a --delete --exclude='.git' source/ ./
+          git add -A
+          git commit -m "Import complete ParentAudioConnect snapshot at Build 713"
+          git push origin migration/build-713-source
