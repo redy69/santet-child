@@ -558,9 +558,11 @@ class ChildAudioConnectionService : Service() {
     private fun startLiveAudioHeartbeat() {
         if (liveHeartbeatJob?.isActive == true) return
         liveHeartbeatJob = serviceScope.launch {
-            while (isActive && activeRemoteAudioTrackIds.isNotEmpty()) {
+            // The heartbeat represents either direction of the live conversation:
+            // incoming parent audio OR the child's explicitly enabled microphone.
+            while (isActive && (activeRemoteAudioTrackIds.isNotEmpty() || childTalkMicActive)) {
                 delay(10_000)
-                if (activeRemoteAudioTrackIds.isNotEmpty()) {
+                if (activeRemoteAudioTrackIds.isNotEmpty() || childTalkMicActive) {
                     ChildAudioActivityReporter.refreshLiveAudioHeartbeat(applicationContext)
                 }
             }
