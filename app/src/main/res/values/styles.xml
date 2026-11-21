@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#425FEB</item>
+        <item name="colorPrimaryVariant">#354FD8</item>
+        <item name="colorSecondary">#80DEEA</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#354FD8</item>
+        <item name="android:navigationBarColor">#F4F6FA</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowBackground">#F4F6FA</item>
+        <item name="android:alertDialogTheme">@style/SantetHpAlertDialogTheme</item>
+        <item name="alertDialogTheme">@style/SantetHpAlertDialogTheme</item>
+    </style>
+
+    <style name="SantetHpAlertDialogTheme" parent="Theme.MaterialComponents.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_santethp_popup</item>
+        <item name="android:textColorPrimary">#203653</item>
+        <item name="android:textColorSecondary">#60738C</item>
+        <item name="colorAccent">#425FEB</item>
+        <item name="android:colorAccent">#425FEB</item>
+        <item name="android:windowMinWidthMajor">88%</item>
+        <item name="android:windowMinWidthMinor">88%</item>
+    </style>
+
+</resources>
