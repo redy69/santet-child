@@ -99,6 +99,7 @@ class ChildAudioConnectionService : Service() {
         // after process death. Both audio services from the old process are gone,
         // so clear their last published activity flags before reconnecting receive-only.
         val processRestart = processRestartDetected || intent == null
+        processRestartDetected = false
         if (processRestart) {
             childTalkMicActive = false
             pendingTalkMicEnabled = null
