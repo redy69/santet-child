@@ -62,6 +62,10 @@ import kotlin.coroutines.resumeWithException
 class RemoteCameraService : Service() {
 
     companion object {
+        @Volatile private var runningInstance: RemoteCameraService? = null
+
+        fun isServiceRunning(): Boolean = runningInstance != null
+
         const val ACTION_ARM = "com.santethp.camera.ARM"
         const val ACTION_START_CAMERA = "com.santethp.camera.START"
         const val ACTION_STOP_CAMERA = "com.santethp.camera.STOP"
@@ -91,6 +95,7 @@ class RemoteCameraService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        runningInstance = this
         createNotificationChannel()
     }
 
@@ -686,6 +691,7 @@ class RemoteCameraService : Service() {
                 try { activeRoom.disconnect() } finally { activeRoom.release() }
             }
         }
+        if (runningInstance === this) runningInstance = null
         super.onDestroy()
     }
 
