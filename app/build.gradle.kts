@@ -88,8 +88,8 @@ android {
 }
 dependencies {
     // Camera capture and child location sharing are only packaged in the Anak flavor.
-    anakImplementation("io.livekit:livekit-android-camerax:2.30.0")
-    anakImplementation("com.google.android.gms:play-services-location:21.3.0")
+    add("anakImplementation", "io.livekit:livekit-android-camerax:2.30.0")
+    add("anakImplementation", "com.google.android.gms:play-services-location:21.3.0")
     implementation("io.github.webrtc-sdk:android:150.7871.04")
     implementation("io.livekit:livekit-android:2.30.0")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
