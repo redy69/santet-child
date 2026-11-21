@@ -6520,7 +6520,7 @@ private var receivedMp3File: File? = null
                 }
                 pairingRef.get().addOnSuccessListener { pairing ->
                     val configured = pairing.get("notificationAllowedPackages") as? List<*>
-                    val allAllowed = configured.isNullOrEmpty()
+                    val allAllowed = configured == null
                     // Show friendly app names only; package IDs stay internal for filtering.
                     val appEntries = options.entries.sortedBy { it.value.lowercase(java.util.Locale.ROOT) }
                     val selected = appEntries.map { entry ->
