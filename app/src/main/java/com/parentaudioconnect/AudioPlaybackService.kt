@@ -30,6 +30,9 @@ class AudioPlaybackService : Service() {
         private const val NOTIFICATION_ID = 4101
         private const val RECOVERY_CHANNEL_ID = "parent_audio_playback_recovery"
         private const val RECOVERY_NOTIFICATION_ID = 4102
+        private const val PLAYBACK_PREFS = "santethp_mp3_playback"
+        private const val KEY_FILE_PATH = "active_file_path"
+        private const val KEY_POSITION_MS = "last_position_ms"
     }
 
     private var player: MediaPlayer? = null
@@ -42,18 +45,30 @@ class AudioPlaybackService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action != ACTION_PLAY) {
+        if (intent != null && intent.action != ACTION_PLAY) {
             stopSelf(startId)
             return START_NOT_STICKY
         }
 
-        val path = intent.getStringExtra(EXTRA_FILE_PATH)
+        // A foreground playback service may be recreated with a null intent after
+        // Android kills its process. Restore only an in-progress MP3 session saved
+        // by this service; never invent a new playback session.
+        val prefs = getSharedPreferences(PLAYBACK_PREFS, MODE_PRIVATE)
+        val restoring = intent == null
+        val path = if (restoring) prefs.getString(KEY_FILE_PATH, null)
+            else intent.getStringExtra(EXTRA_FILE_PATH)
+        val resumePosition = if (restoring) prefs.getInt(KEY_POSITION_MS, 0) else 0
         val file = path?.let(::File)
         if (file == null || !file.isFile || !file.canRead()) {
+            clearSavedPlayback()
             showPlaybackRecoveryNotification("File MP3 tidak ditemukan atau tidak dapat dibaca.")
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        prefs.edit()
+            .putString(KEY_FILE_PATH, file.absolutePath)
+            .putInt(KEY_POSITION_MS, resumePosition.coerceAtLeast(0))
+            .apply()
 
         try {
             startForeground(NOTIFICATION_ID, buildNotification("Memutar pesan suara"))
@@ -63,11 +78,12 @@ class AudioPlaybackService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
-        startPlayback(file, startId)
-        return START_NOT_STICKY
+        startPlayback(file, startId, resumePosition)
+        // Keep playback eligible for system recreation after an unexpected process death.
+        return START_STICKY
     }
 
-    private fun startPlayback(file: File, startId: Int) {
+    private fun startPlayback(file: File, startId: Int, resumePosition: Int = 0) {
         // Keep media volume at maximum for every received MP3.
         releasePlayer()
 
@@ -85,6 +101,9 @@ class AudioPlaybackService : Service() {
             nextPlayer.setOnPreparedListener { prepared ->
                 try {
                     raiseMediaVolumeForPlayback()
+                    if (resumePosition > 0) {
+                        prepared.seekTo(resumePosition.coerceAtMost(prepared.duration))
+                    }
                     prepared.start()
                     if (!prepared.isPlaying) {
                         throw IllegalStateException("MediaPlayer belum mulai memutar audio")
@@ -97,6 +116,7 @@ class AudioPlaybackService : Service() {
                 } catch (error: Exception) {
                     android.util.Log.e("SantetHP-MP3", "MediaPlayer gagal memulai playback", error)
                     stopPlaybackHeartbeat()
+                    clearSavedPlayback()
                     ChildAudioActivityReporter.setMp3AudioActive(applicationContext, false)
                     showPlaybackRecoveryNotification("MP3 sudah diterima, tetapi audio tidak berhasil mulai diputar. Coba kirim ulang dari HP orang tua.")
                     releasePlayer()
@@ -106,6 +126,7 @@ class AudioPlaybackService : Service() {
             }
             nextPlayer.setOnCompletionListener {
                 stopPlaybackHeartbeat()
+                clearSavedPlayback()
                 ChildAudioActivityReporter.setMp3AudioActive(applicationContext, false)
                 releasePlayer()
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -114,6 +135,7 @@ class AudioPlaybackService : Service() {
             nextPlayer.setOnErrorListener { _, what, extra ->
                 android.util.Log.e("SantetHP-MP3", "MediaPlayer gagal memutar MP3: what=$what extra=$extra")
                 stopPlaybackHeartbeat()
+                clearSavedPlayback()
                 ChildAudioActivityReporter.setMp3AudioActive(applicationContext, false)
                 showPlaybackRecoveryNotification("Pemutar MP3 gagal membaca atau memutar audio. Coba kirim ulang file dari HP orang tua.")
                 releasePlayer()
@@ -125,6 +147,7 @@ class AudioPlaybackService : Service() {
         } catch (error: Exception) {
             android.util.Log.e("SantetHP-MP3", "Gagal menyiapkan pemutar MP3", error)
             stopPlaybackHeartbeat()
+            clearSavedPlayback()
             ChildAudioActivityReporter.setMp3AudioActive(applicationContext, false)
             showPlaybackRecoveryNotification("MP3 diterima, tetapi pemutar gagal disiapkan. Coba kirim ulang dari HP orang tua.")
             releasePlayer()
@@ -213,10 +236,21 @@ class AudioPlaybackService : Service() {
             while (isActive && player?.isPlaying == true) {
                 delay(10_000)
                 if (player?.isPlaying == true) {
+                    getSharedPreferences(PLAYBACK_PREFS, MODE_PRIVATE).edit()
+                        .putString(KEY_FILE_PATH, player?.let { getSavedFilePath() })
+                        .putInt(KEY_POSITION_MS, player?.currentPosition ?: 0)
+                        .apply()
                     ChildAudioActivityReporter.refreshMp3AudioHeartbeat(applicationContext)
                 }
             }
         }
+    }
+
+    private fun getSavedFilePath(): String? =
+        getSharedPreferences(PLAYBACK_PREFS, MODE_PRIVATE).getString(KEY_FILE_PATH, null)
+
+    private fun clearSavedPlayback() {
+        getSharedPreferences(PLAYBACK_PREFS, MODE_PRIVATE).edit().clear().apply()
     }
 
     private fun stopPlaybackHeartbeat() {
@@ -234,6 +268,7 @@ class AudioPlaybackService : Service() {
 
     override fun onDestroy() {
         stopPlaybackHeartbeat()
+        clearSavedPlayback()
         ChildAudioActivityReporter.setMp3AudioActive(applicationContext, false)
         releasePlayer()
         heartbeatScope.cancel()
