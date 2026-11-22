@@ -237,7 +237,6 @@ class AudioPlaybackService : Service() {
                 delay(10_000)
                 if (player?.isPlaying == true) {
                     getSharedPreferences(PLAYBACK_PREFS, MODE_PRIVATE).edit()
-                        .putString(KEY_FILE_PATH, player?.let { getSavedFilePath() })
                         .putInt(KEY_POSITION_MS, player?.currentPosition ?: 0)
                         .apply()
                     ChildAudioActivityReporter.refreshMp3AudioHeartbeat(applicationContext)
