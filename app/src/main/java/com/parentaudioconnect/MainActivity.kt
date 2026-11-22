@@ -7875,6 +7875,22 @@ private var receivedMp3File: File? = null
             prefs.getString("pair_code", null).isNullOrBlank()
         ) return
 
+        // Keep the receive-only transport alive independently of microphone consent.
+        // This restores the pre-split behavior: parent audio can reach the child in
+        // the background, while the child's microphone remains disabled.
+        try {
+            val receiveIntent = Intent(this, ChildAudioConnectionService::class.java).apply {
+                action = ChildAudioConnectionService.ACTION_CONNECT
+            }
+            ContextCompat.startForegroundService(this, receiveIntent)
+        } catch (error: Exception) {
+            android.util.Log.w(
+                "SantetHP-Audio",
+                "Could not start receive-only child audio service",
+                error
+            )
+        }
+
         val permissionGranted = ContextCompat.checkSelfPermission(
             this, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
