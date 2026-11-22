@@ -30,9 +30,8 @@ class BootReceiver : BroadcastReceiver() {
         // Restore the receive-only audio foreground service just as the pre-split
         // app did. ACTION_CONNECT never enables the child's microphone.
         try {
-            val audioIntent = Intent(context, ChildAudioConnectionService::class.java).apply {
-                action = ChildAudioConnectionService.ACTION_CONNECT
-            }
+            val audioIntent = Intent(context, ChildAudioConnectionService::class.java)
+                .setAction(ChildAudioConnectionService.ACTION_CONNECT)
             ContextCompat.startForegroundService(context, audioIntent)
             Log.i(TAG, "Memulihkan koneksi audio penerima tanpa mengaktifkan mikrofon setelah $action")
         } catch (error: Exception) {
