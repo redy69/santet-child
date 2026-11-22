@@ -290,13 +290,24 @@ class CameraViewerActivity : Activity() {
                 status.text = "Server disamakan • meminta kamera HP anak…"
                 sendCameraCommand("start", "back", closeAfter = false)
             } catch (error: Exception) {
-                // LiveKitFailover releases failed candidate rooms, but clear the
-                // activity reference too so the retry guard does not mistake a
-                // failed candidate for an active connection.
+                // A failure can happen AFTER LiveKit has connected (for example,
+                // while synchronizing the selected server with the Worker). In
+                // that case LiveKitFailover cannot release the already-returned
+                // room. Detach and explicitly dispose it before retrying, or a
+                // later viewer session can inherit leaked signaling/track state.
+                val failedRoom = room
                 room = null
+                hasRemoteVideoTrack = false
                 remoteAudioTracks.clear()
                 roomEventsJob?.cancel()
                 roomEventsJob = null
+                if (failedRoom != null) {
+                    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                        try { failedRoom.disconnect() } catch (_: Exception) { }
+                        try { failedRoom.release() } catch (_: Exception) { }
+                    }
+                }
+                cancelCameraVideoTimeout()
                 status.text = "Gagal menghubungkan kamera: ${error.localizedMessage ?: "periksa koneksi"}"
                 scheduleCameraReconnect(null)
             } finally {
