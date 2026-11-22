@@ -277,6 +277,12 @@ class RemoteCameraService : Service() {
                                 cameraTrack = null
                                 stopCameraSettings()
                                 updateNotification("Koneksi kamera terputus • mencoba menyambungkan kembali…")
+                                // Disconnected rooms still need release(); otherwise repeated
+                                // network drops can leave stale LiveKit resources behind.
+                                scope.launch {
+                                    try { candidateRoom.disconnect() } catch (_: Exception) { }
+                                    try { candidateRoom.release() } catch (_: Exception) { }
+                                }
                                 // The retry loop waits for this connection attempt to finish.
                                 scheduleCameraReconnect()
                             }
@@ -317,8 +323,15 @@ class RemoteCameraService : Service() {
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
+            // A room may already have connected before a later setup step fails.
+            // Detach and release it explicitly so the next retry starts cleanly.
+            val failedRoom = room
             room = null
             activeServerId = null
+            if (failedRoom != null) {
+                try { failedRoom.disconnect() } catch (_: Exception) { }
+                try { failedRoom.release() } catch (_: Exception) { }
+            }
             updateNotification("Kamera belum siap: ${error.localizedMessage ?: "koneksi gagal"}")
             scheduleCameraReconnect()
         } finally {
