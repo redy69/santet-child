@@ -62,6 +62,10 @@ import kotlin.coroutines.resumeWithException
 class RemoteCameraService : Service() {
 
     companion object {
+        @Volatile private var runningInstance: RemoteCameraService? = null
+
+        fun isServiceRunning(): Boolean = runningInstance != null
+
         const val ACTION_ARM = "com.santethp.camera.ARM"
         const val ACTION_START_CAMERA = "com.santethp.camera.START"
         const val ACTION_STOP_CAMERA = "com.santethp.camera.STOP"
@@ -91,6 +95,7 @@ class RemoteCameraService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        runningInstance = this
         createNotificationChannel()
     }
 
@@ -135,10 +140,30 @@ class RemoteCameraService : Service() {
             ACTION_REVOKE_AUDIO -> revokeCameraAudioConsent()
             ACTION_DISARM -> disarm()
             else -> {
-                if (!isArmed()) stopSelf()
+                if (!isArmed()) {
+                    stopSelf(startId)
+                } else if (intent == null) {
+                    // A sticky restart is performed by Android after process death.
+                    // Re-promote the previously armed standby before reconnecting.
+                    // If Android 14+ no longer grants the while-in-use camera access,
+                    // fail closed and let the visible app re-arm it instead.
+                    try {
+                        startCameraForeground()
+                        ensureCameraRoomConnected()
+                    } catch (error: Exception) {
+                        android.util.Log.e(
+                            "SantetHP-Camera",
+                            "Android tidak mengizinkan pemulihan siaga kamera di latar belakang",
+                            error
+                        )
+                        updateNotification("Siaga kamera perlu dibuka kembali dari aplikasi Anak")
+                        stopSelf(startId)
+                        return START_NOT_STICKY
+                    }
+                }
             }
         }
-        return START_NOT_STICKY
+        return if (isArmed()) START_STICKY else START_NOT_STICKY
     }
 
     private fun armFromVisibleApp() {
@@ -252,6 +277,12 @@ class RemoteCameraService : Service() {
                                 cameraTrack = null
                                 stopCameraSettings()
                                 updateNotification("Koneksi kamera terputus • mencoba menyambungkan kembali…")
+                                // Disconnected rooms still need release(); otherwise repeated
+                                // network drops can leave stale LiveKit resources behind.
+                                scope.launch {
+                                    try { candidateRoom.disconnect() } catch (_: Exception) { }
+                                    try { candidateRoom.release() } catch (_: Exception) { }
+                                }
                                 // The retry loop waits for this connection attempt to finish.
                                 scheduleCameraReconnect()
                             }
@@ -292,8 +323,15 @@ class RemoteCameraService : Service() {
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
+            // A room may already have connected before a later setup step fails.
+            // Detach and release it explicitly so the next retry starts cleanly.
+            val failedRoom = room
             room = null
             activeServerId = null
+            if (failedRoom != null) {
+                try { failedRoom.disconnect() } catch (_: Exception) { }
+                try { failedRoom.release() } catch (_: Exception) { }
+            }
             updateNotification("Kamera belum siap: ${error.localizedMessage ?: "koneksi gagal"}")
             scheduleCameraReconnect()
         } finally {
@@ -686,6 +724,7 @@ class RemoteCameraService : Service() {
                 try { activeRoom.disconnect() } finally { activeRoom.release() }
             }
         }
+        if (runningInstance === this) runningInstance = null
         super.onDestroy()
     }
 

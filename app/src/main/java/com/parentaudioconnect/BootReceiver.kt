@@ -7,11 +7,9 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 
 /**
- * Restores lightweight device reporting and the child's explicitly consented
- * gallery P2P foreground service after boot or an app update.
- *
- * Audio transport is intentionally not started here; it still requires an
- * authenticated AUDIO_START command from the parent device.
+ * Restores the child's receive-only audio transport, lightweight device
+ * reporting, and explicitly consented gallery P2P service after boot or update.
+ * Audio receive is independent of microphone consent: this never enables capture.
  */
 class BootReceiver : BroadcastReceiver() {
     companion object {
@@ -28,6 +26,17 @@ class BootReceiver : BroadcastReceiver() {
         if (prefs.getString("pair_role", null) != "child") return
 
         ChildDeviceStatusWorker.schedule(context)
+
+        // Restore the receive-only audio foreground service just as the pre-split
+        // app did. ACTION_CONNECT never enables the child's microphone.
+        try {
+            val audioIntent = Intent(context, ChildAudioConnectionService::class.java)
+                .setAction(ChildAudioConnectionService.ACTION_CONNECT)
+            ContextCompat.startForegroundService(context, audioIntent)
+            Log.i(TAG, "Memulihkan koneksi audio penerima tanpa mengaktifkan mikrofon setelah $action")
+        } catch (error: Exception) {
+            Log.e(TAG, "Gagal memulihkan koneksi audio penerima setelah $action", error)
+        }
 
         // Restore the transport when either the gallery consent was
         // acknowledged by the server or the child separately consented to

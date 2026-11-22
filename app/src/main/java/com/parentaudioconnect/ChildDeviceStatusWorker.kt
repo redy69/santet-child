@@ -15,8 +15,8 @@ import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
 /**
- * Device diagnostics run independently from LiveKit audio/video services.
- * A failure in one reporter must not prevent the remaining reports from running.
+ * Publishes non-heartbeat device diagnostics. The online heartbeat has its own
+ * lightweight worker so unrelated reporting cannot delay or fail that signal.
  */
 class ChildDeviceStatusWorker(
     appContext: Context,
@@ -41,11 +41,7 @@ class ChildDeviceStatusWorker(
             }
         }
 
-        Log.i(TAG, "Device status worker started")
-
-        runReporter("battery and network status") {
-            ChildDeviceStatusReporter.publish(applicationContext)
-        }
+        Log.i(TAG, "Device diagnostics worker started")
         runReporter("app usage history") {
             AppUsageReporter.publish(applicationContext)
         }
@@ -80,13 +76,16 @@ class ChildDeviceStatusWorker(
                 15, TimeUnit.MINUTES
             ).setConstraints(constraints).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                PERIODIC_NAME, ExistingPeriodicWorkPolicy.KEEP, periodic
+                PERIODIC_NAME, ExistingPeriodicWorkPolicy.UPDATE, periodic
             )
+            ChildHeartbeatWorker.schedule(context)
+            Log.i(TAG, "Diagnostics and independent heartbeat work scheduled")
         }
 
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(INITIAL_NAME)
             WorkManager.getInstance(context).cancelUniqueWork(PERIODIC_NAME)
+            ChildHeartbeatWorker.cancel(context)
             ChildUsageScheduleWorker.cancel(context)
         }
     }

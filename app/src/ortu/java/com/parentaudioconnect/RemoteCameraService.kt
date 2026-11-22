@@ -12,6 +12,9 @@ class RemoteCameraService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        // The parent flavor never hosts the child's camera standby service.
+        fun isServiceRunning(): Boolean = false
+
         const val ACTION_ARM = "com.santethp.camera.ARM"
         const val ACTION_START_CAMERA = "com.santethp.camera.START"
         const val ACTION_STOP_CAMERA = "com.santethp.camera.STOP"

@@ -28,6 +28,8 @@ class AudioPlaybackService : Service() {
         const val EXTRA_FILE_PATH = "extra_file_path"
         private const val CHANNEL_ID = "parent_audio_playback"
         private const val NOTIFICATION_ID = 4101
+        private const val RECOVERY_CHANNEL_ID = "parent_audio_playback_recovery"
+        private const val RECOVERY_NOTIFICATION_ID = 4102
     }
 
     private var player: MediaPlayer? = null
@@ -48,11 +50,19 @@ class AudioPlaybackService : Service() {
         val path = intent.getStringExtra(EXTRA_FILE_PATH)
         val file = path?.let(::File)
         if (file == null || !file.isFile || !file.canRead()) {
+            showPlaybackRecoveryNotification("File MP3 tidak ditemukan atau tidak dapat dibaca.")
             stopSelf(startId)
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIFICATION_ID, buildNotification("Memutar pesan suara"))
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification("Memutar pesan suara"))
+        } catch (error: Exception) {
+            android.util.Log.e("SantetHP-MP3", "Android menolak layanan pemutar MP3", error)
+            showPlaybackRecoveryNotification("Android tidak mengizinkan layanan pemutar MP3 dimulai. Buka SantetHP di HP anak lalu coba kirim ulang.")
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         startPlayback(file, startId)
         return START_NOT_STICKY
     }
@@ -73,12 +83,26 @@ class AudioPlaybackService : Service() {
             // USAGE_MEDIA routes through Android's normal media output path.
             nextPlayer.setDataSource(file.absolutePath)
             nextPlayer.setOnPreparedListener { prepared ->
-                raiseMediaVolumeForPlayback()
-                ChildAudioActivityReporter.setMp3AudioActive(applicationContext, true)
-                prepared.start()
-                startPlaybackHeartbeat()
-                val manager = getSystemService(NotificationManager::class.java)
-                manager.notify(NOTIFICATION_ID, buildNotification("Pesan suara sedang diputar"))
+                try {
+                    raiseMediaVolumeForPlayback()
+                    prepared.start()
+                    if (!prepared.isPlaying) {
+                        throw IllegalStateException("MediaPlayer belum mulai memutar audio")
+                    }
+                    // Publish active only after MediaPlayer has actually entered playback.
+                    ChildAudioActivityReporter.setMp3AudioActive(applicationContext, true)
+                    startPlaybackHeartbeat()
+                    val manager = getSystemService(NotificationManager::class.java)
+                    manager.notify(NOTIFICATION_ID, buildNotification("Pesan suara sedang diputar"))
+                } catch (error: Exception) {
+                    android.util.Log.e("SantetHP-MP3", "MediaPlayer gagal memulai playback", error)
+                    stopPlaybackHeartbeat()
+                    ChildAudioActivityReporter.setMp3AudioActive(applicationContext, false)
+                    showPlaybackRecoveryNotification("MP3 sudah diterima, tetapi audio tidak berhasil mulai diputar. Coba kirim ulang dari HP orang tua.")
+                    releasePlayer()
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf(startId)
+                }
             }
             nextPlayer.setOnCompletionListener {
                 stopPlaybackHeartbeat()
@@ -87,21 +111,64 @@ class AudioPlaybackService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf(startId)
             }
-            nextPlayer.setOnErrorListener { _, _, _ ->
+            nextPlayer.setOnErrorListener { _, what, extra ->
+                android.util.Log.e("SantetHP-MP3", "MediaPlayer gagal memutar MP3: what=$what extra=$extra")
                 stopPlaybackHeartbeat()
                 ChildAudioActivityReporter.setMp3AudioActive(applicationContext, false)
+                showPlaybackRecoveryNotification("Pemutar MP3 gagal membaca atau memutar audio. Coba kirim ulang file dari HP orang tua.")
                 releasePlayer()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf(startId)
                 true
             }
             nextPlayer.prepareAsync()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            android.util.Log.e("SantetHP-MP3", "Gagal menyiapkan pemutar MP3", error)
             stopPlaybackHeartbeat()
             ChildAudioActivityReporter.setMp3AudioActive(applicationContext, false)
+            showPlaybackRecoveryNotification("MP3 diterima, tetapi pemutar gagal disiapkan. Coba kirim ulang dari HP orang tua.")
             releasePlayer()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf(startId)
+        }
+    }
+
+    private fun showPlaybackRecoveryNotification(message: String) {
+        try {
+            val manager = getSystemService(NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                manager.createNotificationChannel(
+                    NotificationChannel(
+                        RECOVERY_CHANNEL_ID,
+                        "Pemulihan pemutar MP3",
+                        NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        description = "Memberi tahu jika MP3 gagal diterima atau diputar"
+                    }
+                )
+            }
+            val openApp = android.app.PendingIntent.getActivity(
+                this,
+                RECOVERY_NOTIFICATION_ID,
+                Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                },
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            manager.notify(
+                RECOVERY_NOTIFICATION_ID,
+                NotificationCompat.Builder(this, RECOVERY_CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.ic_media_play)
+                    .setContentTitle("SantetHP • MP3 belum dapat diputar")
+                    .setContentText(message)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                    .setContentIntent(openApp)
+                    .setAutoCancel(true)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .build()
+            )
+        } catch (notificationError: Exception) {
+            android.util.Log.w("SantetHP-MP3", "Tidak dapat menampilkan notifikasi pemulihan MP3", notificationError)
         }
     }
 

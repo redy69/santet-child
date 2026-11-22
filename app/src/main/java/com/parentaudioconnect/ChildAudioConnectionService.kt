@@ -36,6 +36,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -65,10 +67,13 @@ class ChildAudioConnectionService : Service() {
         }
         private const val CHANNEL_ID = "child_audio_connection"
         private const val NOTIFICATION_ID = 4201
+        private const val RECOVERY_CHANNEL_ID = "child_audio_recovery"
+        private const val RECOVERY_NOTIFICATION_ID = 4203
         private const val WORKER_URL = "https://parent-audio-token.yudhis-r15.workers.dev/token"
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val talkMicMutex = Mutex()
     private var room: Room? = null
     private var roomEventsJob: Job? = null
     private var reconnectJob: Job? = null
@@ -83,14 +88,27 @@ class ChildAudioConnectionService : Service() {
     @Volatile private var childTalkMicActive = false
     @Volatile private var connectedServerId: String? = null
     private var serverSwitchJob: Job? = null
+    private var processRestartDetected = false
 
     override fun onCreate() {
         super.onCreate()
+        processRestartDetected = ChildAudioActivityReporter.beginProcessSession(applicationContext)
         runningInstance = this
         createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Android supplies a null intent when it recreates a START_STICKY service
+        // after process death. Both audio services from the old process are gone,
+        // so clear their last published activity flags before reconnecting receive-only.
+        val processRestart = processRestartDetected || intent == null
+        processRestartDetected = false
+        if (processRestart) {
+            childTalkMicActive = false
+            pendingTalkMicEnabled = null
+            activeRemoteAudioTrackIds.clear()
+            stopLiveAudioHeartbeat()
+        }
         if (intent?.action == ACTION_DISCONNECT) {
             serviceScope.launch {
                 try { room?.localParticipant?.setMicrophoneEnabled(false) } catch (_: Exception) { }
@@ -140,6 +158,7 @@ class ChildAudioConnectionService : Service() {
             // activity has already left the foreground or permission was revoked.
             // Fail closed: do not capture audio and do not crash the app process.
             Log.e("SantetHP-Audio", "Foreground audio service was not allowed to start", error)
+            showForegroundStartRecoveryNotification(prepareMicrophone)
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -148,12 +167,26 @@ class ChildAudioConnectionService : Service() {
         watchForPairingRemoval()
         if (!connecting && room == null) {
             connecting = true
-            serviceScope.launch { connectWithRetry() }
+            serviceScope.launch {
+                if (processRestart) {
+                    try {
+                        // Wait for stale Firestore activity flags to clear before
+                        // reconnecting. Otherwise a late "false" write could race
+                        // with a fresh "true" heartbeat from the new session.
+                        ChildAudioActivityReporter.clearAfterProcessRestart(applicationContext)?.await()
+                    } catch (error: Exception) {
+                        Log.w("SantetHP-Audio", "Could not clear stale audio activity before reconnect", error)
+                    }
+                }
+                connectWithRetry()
+            }
         }
-        // Receive-only MP3/audio transport may recover after process death. Once
-        // the microphone type is prepared, do not recreate that microphone service
-        // from the background; the child opens SantetHP to prepare it again.
-        return if (micForegroundPrepared) START_NOT_STICKY else START_STICKY
+        // Keep the receive-only audio transport eligible for recovery after process death.
+        // Android restarts a START_STICKY service with a null intent: on that fresh
+        // instance micForegroundPrepared is false, so it is promoted only as
+        // CONNECTED_DEVICE and reconnects MP3/Live Audio receive transport. Microphone
+        // capture is NOT restored; the child must reopen SantetHP to prepare it again.
+        return START_STICKY
     }
 
     private fun watchForPairingRemoval() {
@@ -321,7 +354,7 @@ class ChildAudioConnectionService : Service() {
                                         if (childTalkMicActive) {
                                             pendingTalkMicEnabled = false
                                             serviceScope.launch {
-                                                applyTalkMicrophoneState(false)
+                                                applyPendingTalkMicrophoneState()
                                                 updateNotification("Orang tua terputus • mikrofon anak dimatikan")
                                             }
                                         }
@@ -330,7 +363,11 @@ class ChildAudioConnectionService : Service() {
                                         if (room === candidateRoom) {
                                             room = null
                                             activeRemoteAudioTrackIds.clear()
-                                            if (childTalkMicActive) pendingTalkMicEnabled = true
+                                            // Preserve an explicit STOP command across reconnects.
+                                            // Never turn a failed stop into a later microphone re-enable.
+                                            if (childTalkMicActive && pendingTalkMicEnabled != false) {
+                                                pendingTalkMicEnabled = true
+                                            }
                                             childTalkMicActive = false
                                             stopLiveAudioHeartbeat()
                                             ChildAudioActivityReporter.setLiveAudioActive(
@@ -390,8 +427,8 @@ class ChildAudioConnectionService : Service() {
                         if (micForegroundPrepared) "Siap menerima percakapan • mikrofon anak mati • MP3 aktif"
                         else "Terhubung • audio live dan MP3 aktif • mikrofon mati"
                     )
-                    if (pendingTalkMicEnabled == true) {
-                        serviceScope.launch { applyTalkMicrophoneState(true) }
+                    if (pendingTalkMicEnabled != null) {
+                        serviceScope.launch { applyPendingTalkMicrophoneState() }
                     }
                     return
                 } catch (error: CancellationException) {
@@ -401,7 +438,11 @@ class ChildAudioConnectionService : Service() {
                     roomEventsJob = null
                     room = null
                     connectedServerId = null
-                    if (childTalkMicActive) pendingTalkMicEnabled = true
+                    // Keep a pending STOP authoritative; a reconnect must not
+                    // resurrect microphone capture after the parent has stopped it.
+                    if (childTalkMicActive && pendingTalkMicEnabled != false) {
+                        pendingTalkMicEnabled = true
+                    }
                     childTalkMicActive = false
                     mp3TransferManager = null
                     activeRemoteAudioTrackIds.clear()
@@ -477,7 +518,7 @@ class ChildAudioConnectionService : Service() {
             preferredServerId = serverId
             reconnectForConversationServer(serverId)
         } else {
-            serviceScope.launch { applyTalkMicrophoneState(enabled) }
+            serviceScope.launch { applyPendingTalkMicrophoneState() }
         }
         return true
     }
@@ -487,60 +528,107 @@ class ChildAudioConnectionService : Service() {
         serverSwitchJob = serviceScope.launch {
             while (connecting && isActive) delay(250)
             if (!isActive) return@launch
-            val activeRoom = room
-            if (activeRoom != null && connectedServerId != serverId) {
-                try { activeRoom.localParticipant.setMicrophoneEnabled(false) } catch (_: Exception) { }
-                childTalkMicActive = false
-                roomEventsJob?.cancel()
-                roomEventsJob = null
-                mp3TransferManager = null
-                room = null
-                try { activeRoom.disconnect() } catch (_: Exception) { }
-                try { activeRoom.release() } catch (_: Exception) { }
-                connectedServerId = null
+
+            // Serialize the old-room microphone shutdown with any in-flight START/STOP.
+            // The latest pending command remains queued and is applied after the new room connects.
+            talkMicMutex.withLock {
+                val activeRoom = room
+                if (activeRoom != null && connectedServerId != serverId) {
+                    try { activeRoom.localParticipant.setMicrophoneEnabled(false) } catch (_: Exception) { }
+                    childTalkMicActive = false
+                    roomEventsJob?.cancel()
+                    roomEventsJob = null
+                    mp3TransferManager = null
+                    room = null
+                    try { activeRoom.disconnect() } catch (_: Exception) { }
+                    try { activeRoom.release() } catch (_: Exception) { }
+                    connectedServerId = null
+                }
             }
+
             if (room == null && !connecting && isActive) {
                 connecting = true
                 connectWithRetry()
             } else if (room != null && isActive) {
-                applyTalkMicrophoneState(pendingTalkMicEnabled ?: false)
+                applyPendingTalkMicrophoneState()
             }
         }
     }
 
-    private suspend fun applyTalkMicrophoneState(enabled: Boolean) {
-        val activeRoom = room
-        if (activeRoom == null) {
-            pendingTalkMicEnabled = enabled
-            updateNotification(
-                if (enabled) "Menyiapkan ruang percakapan • mikrofon belum aktif"
-                else "Mikrofon anak mati • menunggu orang tua"
-            )
-            return
-        }
-        try {
-            if (childTalkMicActive == enabled) {
-                pendingTalkMicEnabled = null
-                return
+    private suspend fun applyPendingTalkMicrophoneState() {
+        // Serialize LiveKit microphone transitions. If START and STOP arrive while
+        // one transition is in flight, always apply the newest requested state last.
+        talkMicMutex.withLock {
+            var desiredState = pendingTalkMicEnabled ?: return@withLock
+            while (true) {
+                val activeRoom = room
+                if (activeRoom == null) {
+                    pendingTalkMicEnabled = desiredState
+                    updateNotification(
+                        if (desiredState) "Menyiapkan ruang percakapan • mikrofon belum aktif"
+                        else "Mikrofon anak mati • menunggu orang tua"
+                    )
+                    return@withLock
+                }
+
+                if (childTalkMicActive == desiredState) {
+                    if (pendingTalkMicEnabled == desiredState) pendingTalkMicEnabled = null
+                    return@withLock
+                }
+
+                try {
+                    var changed = activeRoom.localParticipant.setMicrophoneEnabled(desiredState)
+                    if (!changed && pendingTalkMicEnabled == desiredState) {
+                        // Retry one transient LiveKit failure, unless a newer command
+                        // arrived or the room changed while the transition was pending.
+                        delay(600)
+                        if (pendingTalkMicEnabled != desiredState) {
+                            desiredState = pendingTalkMicEnabled ?: return@withLock
+                            continue
+                        }
+                        if (room === activeRoom && (!desiredState || micForegroundPrepared)) {
+                            changed = activeRoom.localParticipant.setMicrophoneEnabled(desiredState)
+                        }
+                    }
+
+                    if (room !== activeRoom) return@withLock
+                    // Record a completed transition even if a newer command arrived
+                    // during the LiveKit call; the loop below immediately applies it.
+                    if (changed) childTalkMicActive = desiredState
+                    if (pendingTalkMicEnabled != desiredState) {
+                        desiredState = pendingTalkMicEnabled ?: return@withLock
+                        continue
+                    }
+
+                    if (!changed) {
+                        updateNotification(
+                            if (desiredState) "Mikrofon percakapan belum berhasil aktif • menunggu koneksi stabil"
+                            else "Mikrofon belum berhasil dimatikan • mencoba kembali saat tersambung"
+                        )
+                        return@withLock
+                    }
+
+                    childTalkMicActive = desiredState
+                    pendingTalkMicEnabled = null
+                    val audioActive = desiredState || activeRemoteAudioTrackIds.isNotEmpty()
+                    ChildAudioActivityReporter.setLiveAudioActive(applicationContext, audioActive)
+                    if (audioActive) startLiveAudioHeartbeat() else stopLiveAudioHeartbeat()
+                    updateNotification(
+                        if (desiredState) "Percakapan aktif • mikrofon anak menyala"
+                        else if (activeRemoteAudioTrackIds.isNotEmpty()) "Suara orang tua aktif • mikrofon anak mati"
+                        else "Siap • mikrofon anak mati • MP3 tetap terhubung"
+                    )
+                    return@withLock
+                } catch (error: Exception) {
+                    Log.w("SantetHP-Audio", "Could not change child conversation microphone", error)
+                    if (pendingTalkMicEnabled != desiredState) {
+                        desiredState = pendingTalkMicEnabled ?: return@withLock
+                        continue
+                    }
+                    updateNotification("Gagal mengubah mikrofon percakapan")
+                    return@withLock
+                }
             }
-            val changed = activeRoom.localParticipant.setMicrophoneEnabled(enabled)
-            if (!changed) {
-                updateNotification("Gagal mengubah mikrofon percakapan")
-                return
-            }
-            childTalkMicActive = enabled
-            pendingTalkMicEnabled = null
-            val audioActive = enabled || activeRemoteAudioTrackIds.isNotEmpty()
-            ChildAudioActivityReporter.setLiveAudioActive(applicationContext, audioActive)
-            if (audioActive) startLiveAudioHeartbeat() else stopLiveAudioHeartbeat()
-            updateNotification(
-                if (enabled) "Percakapan aktif • mikrofon anak menyala"
-                else if (activeRemoteAudioTrackIds.isNotEmpty()) "Suara orang tua aktif • mikrofon anak mati"
-                else "Siap • mikrofon anak mati • MP3 tetap terhubung"
-            )
-        } catch (error: Exception) {
-            Log.w("SantetHP-Audio", "Could not change child conversation microphone", error)
-            updateNotification("Gagal mengaktifkan mikrofon percakapan")
         }
     }
 
@@ -558,9 +646,11 @@ class ChildAudioConnectionService : Service() {
     private fun startLiveAudioHeartbeat() {
         if (liveHeartbeatJob?.isActive == true) return
         liveHeartbeatJob = serviceScope.launch {
-            while (isActive && activeRemoteAudioTrackIds.isNotEmpty()) {
+            // The heartbeat represents either direction of the live conversation:
+            // incoming parent audio OR the child's explicitly enabled microphone.
+            while (isActive && (activeRemoteAudioTrackIds.isNotEmpty() || childTalkMicActive)) {
                 delay(10_000)
-                if (activeRemoteAudioTrackIds.isNotEmpty()) {
+                if (activeRemoteAudioTrackIds.isNotEmpty() || childTalkMicActive) {
                     ChildAudioActivityReporter.refreshLiveAudioHeartbeat(applicationContext)
                 }
             }
@@ -600,6 +690,44 @@ class ChildAudioConnectionService : Service() {
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun showForegroundStartRecoveryNotification(microphoneRequired: Boolean) {
+        val manager = getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    RECOVERY_CHANNEL_ID,
+                    "Pemulihan layanan audio",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Petunjuk saat Android menghentikan layanan audio SantetHP"
+                }
+            )
+        }
+        val openApp = PendingIntent.getActivity(
+            this,
+            RECOVERY_NOTIFICATION_ID,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val body = if (microphoneRequired) {
+            "Layanan percakapan belum dapat disiapkan oleh Android. Buka SantetHP di HP anak agar izin dan layanan mikrofon disiapkan kembali. Mikrofon tetap mati sampai orang tua memulai percakapan."
+        } else {
+            "Layanan penerima audio belum dapat dimulai. Buka SantetHP di HP anak untuk menyambungkan ulang layanan audio."
+        }
+        val notification = NotificationCompat.Builder(this, RECOVERY_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+            .setContentTitle("SantetHP • Layanan audio perlu dipulihkan")
+            .setContentText(if (microphoneRequired) "Buka SantetHP untuk menyiapkan percakapan." else "Buka SantetHP untuk menyambungkan audio kembali.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openApp)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        manager.notify(RECOVERY_NOTIFICATION_ID, notification)
     }
 
     private fun notification(message: String): Notification {

@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.android.gms.tasks.Task
+import java.util.UUID
 
 /**
  * Publishes child-side live-audio activity to the paired document so the parent
@@ -12,9 +14,47 @@ import com.google.firebase.firestore.FirebaseFirestore
  */
 object ChildAudioActivityReporter {
     private const val TAG = "ChildAudioActivity"
+    private const val PROCESS_SESSION_KEY = "child_audio_process_session"
+    private val processSessionId = UUID.randomUUID().toString()
+
+    /** Returns true when this Android app process differs from the last one that hosted the service. */
+    fun beginProcessSession(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("parent_audio", Context.MODE_PRIVATE)
+        val previousSession = prefs.getString(PROCESS_SESSION_KEY, null)
+        val saved = prefs.edit().putString(PROCESS_SESSION_KEY, processSessionId).commit()
+        if (!saved) Log.w(TAG, "Unable to persist child audio process session marker")
+        return !previousSession.isNullOrBlank() && previousSession != processSessionId
+    }
 
     fun setLiveAudioActive(context: Context, active: Boolean) {
         update(context, "liveAudioActive", active)
+    }
+
+    /**
+     * When a new app process takes over the audio service, the previous playback
+     * and room transports no longer exist. Clear both published activity flags
+     * before reconnecting so the parent cannot mistake stale state for live audio.
+     * This does not enable or disable microphone capture.
+     */
+    fun clearAfterProcessRestart(context: Context): Task<Void>? {
+        val prefs = context.getSharedPreferences("parent_audio", Context.MODE_PRIVATE)
+        val code = prefs.getString("pair_code", null)
+        val role = prefs.getString("pair_role", null)
+        if (code.isNullOrBlank() || role != "child") return null
+
+        val now = FieldValue.serverTimestamp()
+        return FirebaseFirestore.getInstance()
+            .collection("pairings")
+            .document(code)
+            .update(
+                mapOf(
+                    "liveAudioActive" to false,
+                    "mp3AudioActive" to false,
+                    "liveAudioActivityAt" to now,
+                    "mp3AudioActivityAt" to now,
+                    "audioActivityAt" to now
+                )
+            )
     }
 
     fun setMp3AudioActive(context: Context, active: Boolean) {

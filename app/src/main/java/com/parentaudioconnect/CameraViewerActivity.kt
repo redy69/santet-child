@@ -62,6 +62,9 @@ class CameraViewerActivity : Activity() {
     private var code: String = ""
     private var facing = "back"
     private var stopping = false
+    private var hasRemoteVideoTrack = false
+    private val cameraVideoTimeoutHandler = Handler(Looper.getMainLooper())
+    private var cameraVideoTimeoutRunnable: Runnable? = null
     private var audioMuted = true
     private lateinit var audioToggle: Button
     private val remoteAudioTracks = linkedSetOf<RemoteAudioTrack>()
@@ -240,6 +243,8 @@ class CameraViewerActivity : Activity() {
                                         when (val subscribedTrack = event.track) {
                                             is VideoTrack -> runOnUiThread {
                                                 subscribedTrack.addRenderer(renderer)
+                                                hasRemoteVideoTrack = true
+                                                cancelCameraVideoTimeout()
                                                 status.text = "KAMERA ANAK TERHUBUNG"
                                             }
                                             is RemoteAudioTrack -> runOnUiThread {
@@ -251,6 +256,7 @@ class CameraViewerActivity : Activity() {
                                     is RoomEvent.Disconnected -> {
                                         if (room === candidateRoom) {
                                             room = null
+                                            hasRemoteVideoTrack = false
                                             remoteAudioTracks.clear()
                                             runOnUiThread {
                                                 status.text = "Koneksi kamera terputus • menyambungkan kembali…"
@@ -284,13 +290,24 @@ class CameraViewerActivity : Activity() {
                 status.text = "Server disamakan • meminta kamera HP anak…"
                 sendCameraCommand("start", "back", closeAfter = false)
             } catch (error: Exception) {
-                // LiveKitFailover releases failed candidate rooms, but clear the
-                // activity reference too so the retry guard does not mistake a
-                // failed candidate for an active connection.
+                // A failure can happen AFTER LiveKit has connected (for example,
+                // while synchronizing the selected server with the Worker). In
+                // that case LiveKitFailover cannot release the already-returned
+                // room. Detach and explicitly dispose it before retrying, or a
+                // later viewer session can inherit leaked signaling/track state.
+                val failedRoom = room
                 room = null
+                hasRemoteVideoTrack = false
                 remoteAudioTracks.clear()
                 roomEventsJob?.cancel()
                 roomEventsJob = null
+                if (failedRoom != null) {
+                    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                        try { failedRoom.disconnect() } catch (_: Exception) { }
+                        try { failedRoom.release() } catch (_: Exception) { }
+                    }
+                }
+                cancelCameraVideoTimeout()
                 status.text = "Gagal menghubungkan kamera: ${error.localizedMessage ?: "periksa koneksi"}"
                 scheduleCameraReconnect(null)
             } finally {
@@ -319,6 +336,22 @@ class CameraViewerActivity : Activity() {
             }
             if (room == null) connectToCameraRoom()
         }
+    }
+
+    private fun scheduleCameraVideoTimeout() {
+        cancelCameraVideoTimeout()
+        val timeout = Runnable {
+            if (!isFinishing && !isDestroyed && !hasRemoteVideoTrack) {
+                status.text = "Perintah sudah dikirim, tetapi video belum diterima. Periksa Siaga Kamera di HP anak atau notifikasi pemulihannya."
+            }
+        }
+        cameraVideoTimeoutRunnable = timeout
+        cameraVideoTimeoutHandler.postDelayed(timeout, 15_000L)
+    }
+
+    private fun cancelCameraVideoTimeout() {
+        cameraVideoTimeoutRunnable?.let(cameraVideoTimeoutHandler::removeCallbacks)
+        cameraVideoTimeoutRunnable = null
     }
 
     private fun confirmStopCamera() {
@@ -362,6 +395,7 @@ class CameraViewerActivity : Activity() {
                 }
                 status.text = if (closeAfter) "Perintah menghentikan kamera dikirim" else
                     "Perintah kamera " + (if (requestedFacing == "front") "depan" else "belakang") + " dikirim"
+                if (!closeAfter && !hasRemoteVideoTrack) scheduleCameraVideoTimeout()
                 if (closeAfter) finish()
             } catch (error: Exception) {
                 stopping = false
@@ -463,6 +497,7 @@ class CameraViewerActivity : Activity() {
     override fun onDestroy() {
         reconnectJob?.cancel()
         reconnectJob = null
+        cancelCameraVideoTimeout()
         scope.cancel()
         roomEventsJob?.cancel()
         roomEventsJob = null
