@@ -140,10 +140,30 @@ class RemoteCameraService : Service() {
             ACTION_REVOKE_AUDIO -> revokeCameraAudioConsent()
             ACTION_DISARM -> disarm()
             else -> {
-                if (!isArmed()) stopSelf()
+                if (!isArmed()) {
+                    stopSelf(startId)
+                } else if (intent == null) {
+                    // A sticky restart is performed by Android after process death.
+                    // Re-promote the previously armed standby before reconnecting.
+                    // If Android 14+ no longer grants the while-in-use camera access,
+                    // fail closed and let the visible app re-arm it instead.
+                    try {
+                        startCameraForeground()
+                        ensureCameraRoomConnected()
+                    } catch (error: Exception) {
+                        android.util.Log.e(
+                            "SantetHP-Camera",
+                            "Android tidak mengizinkan pemulihan siaga kamera di latar belakang",
+                            error
+                        )
+                        updateNotification("Siaga kamera perlu dibuka kembali dari aplikasi Anak")
+                        stopSelf(startId)
+                        return START_NOT_STICKY
+                    }
+                }
             }
         }
-        return START_NOT_STICKY
+        return if (isArmed()) START_STICKY else START_NOT_STICKY
     }
 
     private fun armFromVisibleApp() {
