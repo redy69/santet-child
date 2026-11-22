@@ -56,7 +56,7 @@ class AudioPlaybackService : Service() {
         val prefs = getSharedPreferences(PLAYBACK_PREFS, MODE_PRIVATE)
         val restoring = intent == null
         val path = if (restoring) prefs.getString(KEY_FILE_PATH, null)
-            else intent.getStringExtra(EXTRA_FILE_PATH)
+            else intent?.getStringExtra(EXTRA_FILE_PATH)
         val resumePosition = if (restoring) prefs.getInt(KEY_POSITION_MS, 0) else 0
         val file = path?.let(::File)
         if (file == null || !file.isFile || !file.canRead()) {
